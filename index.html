@@ -1716,5 +1716,31 @@ function renderCompetitors(json, searchTerm, segment) {
   `;
 }
 </script>
+
+<!-- ===== CREDENTIALS POPUP ===== -->
+<div id="credPopup" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(26,15,0,0.75);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:2px;padding:2.5rem;width:480px;max-width:90vw;border-top:4px solid #c8853a;position:relative;">
+    <div style="font-family:'Playfair Display',serif;font-size:1.5rem;font-weight:700;color:#1a0f00;margin-bottom:0.5rem;">🔐 Bol.com API Koppeling</div>
+    <div style="font-size:0.85rem;color:#888;margin-bottom:1.75rem;line-height:1.6;">Vul je bol.com API credentials in. Deze worden alleen in jouw browser-sessie bewaard en nooit opgeslagen op de server.</div>
+    <div style="margin-bottom:1rem;">
+      <label style="font-family:'DM Mono',monospace;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;display:block;margin-bottom:0.4rem;">Client ID</label>
+      <input type="text" id="popupClientId" placeholder="Jouw bol.com Client ID" style="width:100%;padding:0.85rem 1rem;border:1px solid rgba(122,67,16,0.2);border-radius:2px;font-size:0.9rem;font-family:'DM Mono',monospace;outline:none;" />
+    </div>
+    <div style="margin-bottom:0.75rem;">
+      <label style="font-family:'DM Mono',monospace;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:#888;display:block;margin-bottom:0.4rem;">Client Secret</label>
+      <input type="password" id="popupClientSecret" placeholder="Jouw bol.com Client Secret" style="width:100%;padding:0.85rem 1rem;border:1px solid rgba(122,67,16,0.2);border-radius:2px;font-size:0.9rem;font-family:'DM Mono',monospace;outline:none;" />
+    </div>
+    <div style="font-size:0.75rem;color:#aaa;margin-bottom:1.5rem;padding:0.75rem;background:#f8f4ef;border-radius:2px;">
+      📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
+    </div>
+    <div style="display:flex;gap:0.75rem;">
+      <button onclick="submitCredentials()" style="flex:1;background:#1a0f00;color:#e8c89a;border:none;padding:0.85rem;font-family:'DM Sans',sans-serif;font-size:0.85rem;font-weight:600;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;">🔌 Verbinden</button>
+      <button onclick="hideCredentialsPopup()" style="background:transparent;color:#888;border:1px solid #ddd;padding:0.85rem 1.25rem;font-family:'DM Sans',sans-serif;font-size:0.85rem;cursor:pointer;">Annuleer</button>
+    </div>
+    <div style="margin-top:1rem;text-align:center;">
+      <button onclick="loadDemoMode();hideCredentialsPopup();" style="background:none;border:none;color:#c8853a;font-size:0.8rem;cursor:pointer;text-decoration:underline;">Of gebruik demo data →</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>

@@ -1,0 +1,12 @@
+{
+  "name": "thewootz-bol-api",
+  "version": "1.0.0",
+  "description": "TheWootz bol.com Advertising API proxy for Vercel",
+  "private": true,
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

@@ -1,6 +1,7 @@
 // api/orders.js — bol.com Retailer API v10
-// Gebruikt latest-change-date + status=ALL voor historische data (tot 3 maanden terug)
-// Combineert dit met open orders en insights voor volledig dashboard
+// Shipments endpoint = historische data tot ver terug
+// Shipment-lijst bevat al orderPlacedDateTime en EAN — geen detail calls nodig voor basisdata
+// Detail calls alleen voor productnamen van top-EANs
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -30,126 +31,147 @@ export default async function handler(req, res) {
   const startTs = new Date(start).getTime();
   const endTs   = new Date(end).getTime() + 86400000;
 
-  // Genereer alle datums tussen start en end
-  function getDatesInRange(s, e) {
-    const dates = [];
-    const cur = new Date(s);
-    const last = new Date(e);
-    while (cur <= last) {
-      dates.push(cur.toISOString().split('T')[0]);
-      cur.setDate(cur.getDate() + 1);
-    }
-    return dates;
-  }
-
   try {
-    // === STRATEGIE: latest-change-date per dag ophalen ===
-    // Dit geeft ALLE orders (open + shipped + cancelled) voor elke dag
-    const dates = getDatesInRange(start, end);
-    const allOrderIds = new Set();
-    const orderIdToDate = {};
+    // === STAP 1: Shipments ophalen (gesorteerd nieuwste eerst) ===
+    // Shipment-lijst bevat: shipmentId, shipmentDateTime, order.orderPlacedDateTime, shipmentItems[].ean + unitPrice + quantity
+    let allShipmentItems = [];
+    const seenOrders = new Set();
+    let page = 1;
+    let stop = false;
 
-    // Haal per dag de gewijzigde orders op (parallel, max 5 tegelijk)
-    async function fetchOrdersForDate(date) {
-      const ids = [];
-      let page = 1;
-      while (page <= 5) {
-        const r = await fetch(
-          `${BASE}/orders?status=ALL&fulfilment-method=ALL&latest-change-date=${date}&page=${page}`,
-          { headers: H }
-        );
-        if (!r.ok) break;
-        const data = await r.json();
-        const orders = data.orders || [];
-        if (orders.length === 0) break;
-        orders.forEach(o => {
-          ids.push(o.orderId);
-          orderIdToDate[o.orderId] = o.orderPlacedDateTime || date;
+    while (!stop && page <= 20) {
+      const r = await fetch(`${BASE}/shipments?fulfilment-method=ALL&page=${page}`, { headers: H });
+      if (!r.ok) break;
+
+      const data = await r.json();
+      const shipments = data.shipments || [];
+      if (shipments.length === 0) break;
+
+      for (const s of shipments) {
+        // Gebruik orderPlacedDateTime voor datum, val terug op shipmentDateTime
+        const orderDt = s.order?.orderPlacedDateTime || s.shipmentDateTime || '';
+        const ts = orderDt ? new Date(orderDt).getTime() : 0;
+
+        // Stop zodra we shipments zien die ouder zijn dan startDate
+        if (ts > 0 && ts < startTs) { stop = true; break; }
+        // Sla over als buiten periode
+        if (ts > endTs) continue;
+
+        const orderId = s.order?.orderId || s.shipmentId;
+        if (seenOrders.has(orderId)) continue;
+        seenOrders.add(orderId);
+
+        // shipmentItems bevatten ean, unitPrice, quantity
+        (s.shipmentItems || []).forEach(item => {
+          allShipmentItems.push({
+            ean:       item.ean || '',
+            qty:       item.quantity || 1,
+            unitPrice: item.unitPrice || 0,
+            dag:       orderDt.substring(0, 10),
+            orderId
+          });
         });
-        page++;
-        if (orders.length < 50) break;
       }
-      return ids;
+
+      page++;
+      if (shipments.length < 50) break;
     }
 
-    // Verwerk in batches van 5 dagen parallel
-    for (let i = 0; i < dates.length; i += 5) {
-      const batch = dates.slice(i, i + 5);
-      const results = await Promise.all(batch.map(fetchOrdersForDate));
-      results.forEach(ids => ids.forEach(id => allOrderIds.add(id)));
+    // === STAP 2: Open orders ophalen (nog niet verzonden, max 48u oud) ===
+    const openR = await fetch(`${BASE}/orders?fulfilment-method=ALL&status=OPEN&page=1`, { headers: H });
+    if (openR.ok) {
+      const openData = await openR.json();
+      for (const o of (openData.orders || [])) {
+        const dt  = o.orderPlacedDateTime || '';
+        const ts  = dt ? new Date(dt).getTime() : Date.now();
+        if (ts < startTs || ts > endTs) continue;
+        if (seenOrders.has(o.orderId)) continue;
+        seenOrders.add(o.orderId);
+        // Open orders in lijst hebben orderItems met ean en quantity maar soms geen prijs
+        (o.orderItems || []).forEach(item => {
+          allShipmentItems.push({
+            ean:       item.ean || '',
+            qty:       item.quantity || 1,
+            unitPrice: item.unitPrice || 0,
+            dag:       dt.substring(0, 10),
+            orderId:   o.orderId
+          });
+        });
+      }
     }
 
-    // Filter op orderPlacedDateTime binnen de periode
-    const candidateIds = [...allOrderIds].filter(id => {
-      const dt = orderIdToDate[id];
-      if (!dt) return true;
-      const ts = new Date(dt).getTime();
-      return ts >= startTs && ts <= endTs;
+    // === STAP 3: Productnamen ophalen via offers endpoint voor unieke EANs ===
+    // Gebruik de EAN→titel mapping door shipment details op te halen voor top EANs
+    const eanCount = {};
+    allShipmentItems.forEach(i => {
+      if (i.ean) eanCount[i.ean] = (eanCount[i.ean] || 0) + i.qty;
     });
+    const topEANs = Object.entries(eanCount).sort((a,b) => b[1]-a[1]).slice(0,10).map(e => e[0]);
 
-    // === Haal order details op (parallel, batches van 10) ===
-    const detailedOrders = [];
-    for (let i = 0; i < Math.min(candidateIds.length, 100); i += 10) {
-      const batch = candidateIds.slice(i, i + 10);
-      const details = await Promise.all(
-        batch.map(async id => {
-          try {
-            const r = await fetch(`${BASE}/orders/${id}`, { headers: H });
-            if (!r.ok) return null;
-            return await r.json();
-          } catch { return null; }
-        })
-      );
-      details.forEach(o => {
-        if (!o) return;
-        const dt = o.orderPlacedDateTime || '';
-        const ts = dt ? new Date(dt).getTime() : 0;
-        if (!dt || (ts >= startTs && ts <= endTs)) detailedOrders.push(o);
-      });
+    // Haal productnamen op via 1 shipment detail per EAN (efficiënt)
+    const eanToTitle = {};
+    if (topEANs.length > 0) {
+      // Zoek voor elke top-EAN het eerste shipment op om de naam te krijgen
+      const eanToShipmentId = {};
+      // We moeten terug naar de ruwe shipments om shipmentIds te koppelen aan EANs
+      // Eenvoudiger: haal 1 shipment detail op van page 1 voor de namen
+      const detailR = await fetch(`${BASE}/shipments?fulfilment-method=ALL&page=1`, { headers: H });
+      if (detailR.ok) {
+        const detailData = await detailR.json();
+        for (const s of (detailData.shipments || [])) {
+          if (!eanToShipmentId[s.shipmentId]) {
+            for (const item of (s.shipmentItems || [])) {
+              if (topEANs.includes(item.ean) && !eanToShipmentId[item.ean]) {
+                eanToShipmentId[item.ean] = s.shipmentId;
+              }
+            }
+          }
+        }
+      }
+
+      // Haal shipment details op voor unieke shipment IDs
+      const uniqueShipmentIds = [...new Set(Object.values(eanToShipmentId))].slice(0, 5);
+      await Promise.all(uniqueShipmentIds.map(async sid => {
+        try {
+          const r = await fetch(`${BASE}/shipments/${sid}`, { headers: H });
+          if (!r.ok) return;
+          const d = await r.json();
+          (d.shipmentItems || []).forEach(item => {
+            if (item.ean && item.product?.title) {
+              eanToTitle[item.ean] = item.product.title;
+            }
+          });
+        } catch {}
+      }));
     }
 
-    // === Statistieken ===
+    // === STAP 4: Statistieken berekenen ===
     let totalOmzet = 0;
     const productMap = {};
     const dagMap = {};
+    const orderSet = new Set();
 
-    detailedOrders.forEach(order => {
-      const dag = (order.orderPlacedDateTime || '').substring(0, 10);
-      (order.orderItems || []).forEach(item => {
-        const unitPrice  = item.unitPrice  || 0;
-        const totalPrice = item.totalPrice  || 0;
-        const qty        = item.quantity    || 1;
-        const omzet      = totalPrice || (unitPrice * qty);
-        totalOmzet += omzet;
+    allShipmentItems.forEach(item => {
+      const omzet = item.unitPrice * item.qty;
+      totalOmzet += omzet;
+      orderSet.add(item.orderId);
 
-        const titel = item.product?.title || item.offer?.reference || `EAN: ${item.product?.ean || '?'}`;
-        const ean   = item.product?.ean   || item.offer?.offerId   || ('x' + Math.random());
+      const titel = eanToTitle[item.ean] || (item.ean ? `EAN: ${item.ean}` : 'Onbekend product');
+      const key = item.ean || titel;
 
-        if (!productMap[ean]) {
-          productMap[ean] = { titel, ean, stuks: 0, omzet: 0, orderIds: new Set() };
-        }
-        productMap[ean].stuks += qty;
-        productMap[ean].omzet += omzet;
-        productMap[ean].orderIds.add(order.orderId);
+      if (!productMap[key]) productMap[key] = { titel, ean: item.ean, stuks: 0, omzet: 0 };
+      productMap[key].stuks += item.qty;
+      productMap[key].omzet += omzet;
 
-        if (dag) {
-          if (!dagMap[dag]) dagMap[dag] = { datum: dag, bestellingen: 0, omzet: 0 };
-          dagMap[dag].bestellingen++;
-          dagMap[dag].omzet += omzet;
-        }
-      });
+      if (item.dag) {
+        if (!dagMap[item.dag]) dagMap[item.dag] = { datum: item.dag, bestellingen: 0, omzet: 0 };
+        dagMap[item.dag].bestellingen++;
+        dagMap[item.dag].omzet += omzet;
+      }
     });
 
-    const totalBestellingen = detailedOrders.length;
+    const totalBestellingen = orderSet.size;
     const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
-
-    const topProducten = Object.values(productMap)
-      .map(p => ({ ...p, orderIds: p.orderIds.size }))
-      .sort((a, b) => b.omzet - a.omzet)
-      .slice(0, 10);
-
-    const perDag = Object.values(dagMap)
-      .sort((a, b) => a.datum.localeCompare(b.datum));
 
     return res.status(200).json({
       samenvatting: {
@@ -158,12 +180,12 @@ export default async function handler(req, res) {
         gemOmzetPerBestelling: Math.round(gemOmzet  * 100) / 100,
         periode: { start, end }
       },
-      topProducten,
-      perDag,
-      opgehaaldOp: new Date().toISOString()
+      topProducten: Object.values(productMap).sort((a,b) => b.omzet - a.omzet).slice(0, 10),
+      perDag:       Object.values(dagMap).sort((a,b) => a.datum.localeCompare(b.datum)),
+      opgehaaldOp:  new Date().toISOString()
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message, stack: err.stack?.substring(0, 200) });
+    return res.status(500).json({ error: err.message });
   }
 }

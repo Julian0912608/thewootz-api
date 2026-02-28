@@ -1,5 +1,4 @@
 // api/orders.js — bol.com Retailer API v10
-// Haalt bestellingen en omzet op via Client Credentials
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -27,12 +26,12 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Bestellingen ophalen (meerdere pagina's)
+    // Stap 1: lijst van bestellingen ophalen
     let allOrders = [];
     let page = 1;
     let hasMore = true;
 
-    while (hasMore && page <= 5) { // max 5 pagina's = 500 orders
+    while (hasMore && page <= 10) {
       const ordersRes = await fetch(
         `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${page}`,
         { headers }
@@ -42,52 +41,72 @@ export default async function handler(req, res) {
         const err = await ordersRes.text();
         return res.status(ordersRes.status).json({
           error: `Bestellingen ophalen mislukt (${ordersRes.status})`,
-          detail: err.substring(0, 200)
+          detail: err.substring(0, 300)
         });
       }
 
       const ordersData = await ordersRes.json();
       const orders = ordersData.orders || [];
-
-      if (orders.length === 0) {
-        hasMore = false;
-      } else {
-        allOrders = allOrders.concat(orders);
-        page++;
-        if (orders.length < 100) hasMore = false;
-      }
+      if (orders.length === 0) { hasMore = false; break; }
+      allOrders = allOrders.concat(orders);
+      page++;
+      if (orders.length < 50) hasMore = false;
     }
 
-    // Filter op datum
+    // Stap 2: filter op datum via orderPlacedDateTime
     const startTs = new Date(start).getTime();
-    const endTs = new Date(end).getTime() + 86400000;
+    const endTs   = new Date(end).getTime() + 86400000;
 
     const filtered = allOrders.filter(order => {
-      const orderDate = new Date(order.orderPlacedDateTime || order.orderDate || 0).getTime();
-      return orderDate >= startTs && orderDate <= endTs;
+      const dt = order.orderPlacedDateTime || '';
+      if (!dt) return false;
+      const ts = new Date(dt).getTime();
+      return ts >= startTs && ts <= endTs;
     });
 
-    // Statistieken berekenen
+    // Stap 3: voor elke bestelling de details ophalen (bevat prijs en productnaam)
+    const detailed = await Promise.all(
+      filtered.slice(0, 100).map(async order => {
+        const orderId = order.orderId;
+        try {
+          const detailRes = await fetch(`${BASE}/orders/${orderId}`, { headers });
+          if (!detailRes.ok) return order;
+          return await detailRes.json();
+        } catch { return order; }
+      })
+    );
+
+    // Stap 4: statistieken berekenen uit detail responses
     let totalOmzet = 0;
-    let totalBestellingen = filtered.length;
     let productMap = {};
     let dagMap = {};
 
-    filtered.forEach(order => {
-      const items = order.orderItems || [];
+    detailed.forEach(order => {
       const dag = (order.orderPlacedDateTime || '').substring(0, 10);
+      const items = order.orderItems || [];
 
       items.forEach(item => {
-        const prijs = item.unitPrice || item.offerPrice || 0;
-        const qty = item.quantity || 1;
+        // Prijsvelden proberen
+        const unitPrice  = item.unitPrice  || 0;
+        const offerPrice = item.offerPrice  || 0;
+        const prijs = unitPrice || offerPrice || 0;
+        const qty   = item.quantity || item.quantityOrdered || 1;
         const omzet = prijs * qty;
         totalOmzet += omzet;
 
-        // Per product
-        const title = item.product?.title || item.title || 'Onbekend product';
-        const ean = item.product?.ean || item.ean || 'unknown';
+        // Productnaam — zit in item.product of direct op item
+        const titel =
+          item.product?.title ||
+          item.product?.attributes?.find(a => a.attributeId === 'Title')?.value ||
+          item.title ||
+          item.productTitle ||
+          item.offerReference ||
+          `EAN: ${item.product?.ean || item.ean || '?'}`;
+
+        const ean = item.product?.ean || item.ean || String(Math.random());
+
         if (!productMap[ean]) {
-          productMap[ean] = { titel: title, ean, stuks: 0, omzet: 0 };
+          productMap[ean] = { titel, ean, stuks: 0, omzet: 0 };
         }
         productMap[ean].stuks += qty;
         productMap[ean].omzet += omzet;
@@ -101,17 +120,18 @@ export default async function handler(req, res) {
       });
     });
 
-    // Top producten sorteren
+    const totalBestellingen = filtered.length;
+    const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
+
     const topProducten = Object.values(productMap)
       .sort((a, b) => b.omzet - a.omzet)
       .slice(0, 10);
 
-    // Dagen sorteren
     const perDag = Object.values(dagMap)
       .sort((a, b) => a.datum.localeCompare(b.datum));
 
-    // Gemiddelde orderwaarde
-    const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
+    // Debug: stuur ook een sample order mee zodat we de structuur zien
+    const sampleItem = detailed[0]?.orderItems?.[0] || null;
 
     return res.status(200).json({
       samenvatting: {
@@ -122,10 +142,11 @@ export default async function handler(req, res) {
       },
       topProducten,
       perDag,
+      debug: { sampleItem },
       opgehaaldOp: new Date().toISOString()
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message, stack: err.stack?.substring(0, 300) });
   }
 }

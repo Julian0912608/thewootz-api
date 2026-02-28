@@ -1,4 +1,6 @@
 // api/orders.js — bol.com Retailer API v10
+// Configuratie: maximale uitvoeringstijd Vercel = 10s
+// Strategie: lijst ophalen met datum, dan parallel details voor gefilterde orders
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -29,95 +31,103 @@ export default async function handler(req, res) {
   const endTs   = new Date(end).getTime() + 86400000;
 
   try {
-    // Stap 1: haal ALLE order-IDs op (alle pagina's, alle statussen)
-    let allOrderIds = [];
-    
-    // Haal per status op zodat we niks missen
-    const statuses = ['OPEN', 'SHIPPED', 'ALL'];
-    
-    for (const status of statuses) {
-      let page = 1;
-      while (page <= 20) {
-        const ordersRes = await fetch(
-          `${BASE}/orders?fulfilment-method=ALL&status=${status}&page=${page}`,
-          { headers }
-        );
-        if (!ordersRes.ok) break;
-        const data = await ordersRes.json();
-        const orders = data.orders || [];
-        if (orders.length === 0) break;
-        
-        orders.forEach(o => {
-          if (!allOrderIds.includes(o.orderId)) {
-            allOrderIds.push(o.orderId);
-          }
-        });
-        
-        page++;
-        if (orders.length < 50) break;
+    // Stap 1: haal orderlijst op — bevat orderId + orderPlacedDateTime
+    // Gebruik status=ALL en meerdere pagina's
+    let candidateIds = [];
+    let page = 1;
+    let keepGoing = true;
+
+    while (keepGoing && page <= 15) {
+      const r = await fetch(
+        `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${page}`,
+        { headers }
+      );
+      if (!r.ok) {
+        const err = await r.text();
+        return res.status(r.status).json({ error: `Orders lijst mislukt (${r.status})`, detail: err.substring(0,200) });
       }
+
+      const data = await r.json();
+      const orders = data.orders || [];
+      if (orders.length === 0) break;
+
+      let foundOlderThanStart = false;
+      for (const o of orders) {
+        const dt = o.orderPlacedDateTime || o.orderDate || '';
+        if (!dt) {
+          // Geen datum in lijst — voeg altijd toe en haal detail op
+          candidateIds.push(o.orderId);
+          continue;
+        }
+        const ts = new Date(dt).getTime();
+        if (ts > endTs) continue; // te nieuw, skip
+        if (ts < startTs) {
+          foundOlderThanStart = true;
+          break; // ouder dan periode, stop met pagineren
+        }
+        candidateIds.push(o.orderId);
+      }
+
+      if (foundOlderThanStart) break;
+      page++;
+      if (orders.length < 50) break;
     }
 
-    // Stap 2: haal details op per order en filter op datum
-    // Doe dit in batches van 10 parallel
+    if (candidateIds.length === 0) {
+      return res.status(200).json({
+        samenvatting: { totalBestellingen: 0, totalOmzet: 0, gemOmzetPerBestelling: 0, periode: { start, end } },
+        topProducten: [], perDag: [],
+        opgehaaldOp: new Date().toISOString()
+      });
+    }
+
+    // Stap 2: haal details parallel op (max 20 tegelijk)
     const allOrders = [];
-    const batchSize = 10;
-    
-    for (let i = 0; i < allOrderIds.length; i += batchSize) {
-      const batch = allOrderIds.slice(i, i + batchSize);
+    const batchSize = 20;
+
+    for (let i = 0; i < candidateIds.length; i += batchSize) {
+      const batch = candidateIds.slice(i, i + batchSize);
       const details = await Promise.all(
-        batch.map(async orderId => {
+        batch.map(async id => {
           try {
-            const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
+            const r = await fetch(`${BASE}/orders/${id}`, { headers });
             if (!r.ok) return null;
             return await r.json();
           } catch { return null; }
         })
       );
-      
-      details.forEach(order => {
-        if (!order) return;
-        const dt = order.orderPlacedDateTime || '';
-        if (!dt) return;
-        const ts = new Date(dt).getTime();
-        if (ts >= startTs && ts <= endTs) {
-          allOrders.push(order);
-        }
+      details.forEach(o => {
+        if (!o) return;
+        const dt = o.orderPlacedDateTime || '';
+        const ts = dt ? new Date(dt).getTime() : 0;
+        if (!dt || (ts >= startTs && ts <= endTs)) allOrders.push(o);
       });
     }
 
-    // Stap 3: statistieken berekenen
+    // Stap 3: statistieken
     let totalOmzet = 0;
-    let productMap = {};
-    let dagMap = {};
+    const productMap = {};
+    const dagMap = {};
 
     allOrders.forEach(order => {
       const dag = (order.orderPlacedDateTime || '').substring(0, 10);
-      const items = order.orderItems || [];
-
-      items.forEach(item => {
+      (order.orderItems || []).forEach(item => {
         const unitPrice  = item.unitPrice  || 0;
         const totalPrice = item.totalPrice  || 0;
         const qty        = item.quantity    || 1;
         const omzet      = totalPrice || (unitPrice * qty);
         totalOmzet += omzet;
 
-        const titel =
-          item.product?.title ||
-          item.offer?.reference ||
-          `EAN: ${item.product?.ean || '?'}`;
+        const titel = item.product?.title || item.offer?.reference || `EAN: ${item.product?.ean || '?'}`;
+        const ean   = item.product?.ean   || item.offer?.offerId   || ('r' + Math.random());
 
-        const ean = item.product?.ean || item.offer?.offerId || String(Math.random());
-
-        if (!productMap[ean]) {
-          productMap[ean] = { titel, ean, stuks: 0, omzet: 0 };
-        }
+        if (!productMap[ean]) productMap[ean] = { titel, ean, stuks: 0, omzet: 0 };
         productMap[ean].stuks += qty;
         productMap[ean].omzet += omzet;
 
         if (dag) {
           if (!dagMap[dag]) dagMap[dag] = { datum: dag, bestellingen: 0, omzet: 0 };
-          dagMap[dag].bestellingen += 1;
+          dagMap[dag].bestellingen++;
           dagMap[dag].omzet += omzet;
         }
       });
@@ -126,13 +136,6 @@ export default async function handler(req, res) {
     const totalBestellingen = allOrders.length;
     const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
 
-    const topProducten = Object.values(productMap)
-      .sort((a, b) => b.omzet - a.omzet)
-      .slice(0, 10);
-
-    const perDag = Object.values(dagMap)
-      .sort((a, b) => a.datum.localeCompare(b.datum));
-
     return res.status(200).json({
       samenvatting: {
         totalBestellingen,
@@ -140,8 +143,8 @@ export default async function handler(req, res) {
         gemOmzetPerBestelling: Math.round(gemOmzet * 100) / 100,
         periode: { start, end }
       },
-      topProducten,
-      perDag,
+      topProducten: Object.values(productMap).sort((a,b) => b.omzet - a.omzet).slice(0, 10),
+      perDag: Object.values(dagMap).sort((a,b) => a.datum.localeCompare(b.datum)),
       opgehaaldOp: new Date().toISOString()
     });
 

@@ -458,34 +458,24 @@
     <div class="badge">Beta</div>
   </div>
 </header>
-<!-- API CONNECTION BAR -->
-<div id="connBar" style="background:#3d2200;padding:0.6rem 2.5rem;display:flex;align-items:center;gap:1.5rem;border-bottom:1px solid rgba(200,133,58,0.3);flex-wrap:wrap;">
-  <div>
-    <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#c8853a;letter-spacing:1px;text-transform:uppercase;margin-bottom:0.25rem;">Vercel Backend URL</div>
-    <input type="text" id="backendUrl" placeholder="https://jouw-project.vercel.app" style="background:rgba(255,255,255,0.08);border:1px solid rgba(200,133,58,0.3);color:#e8c89a;padding:0.35rem 0.7rem;border-radius:2px;font-size:0.82rem;font-family:'DM Mono',monospace;width:260px;outline:none;" />
+<!-- API STATUS BAR -->
+<div id="connBar" style="background:#3d2200;padding:0.55rem 2.5rem;display:flex;align-items:center;gap:1.5rem;border-bottom:1px solid rgba(200,133,58,0.3);flex-wrap:wrap;">
+  <div style="display:flex;align-items:center;gap:0.75rem;">
+    <span id="connStatus" style="font-family:'DM Mono',monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(200,133,58,0.1);color:#c8853a;border:1px solid rgba(200,133,58,0.3);">Niet verbonden</span>
+    <button onclick="showCredentialsPopup()" id="koppelBtn" style="background:#c8853a;color:white;border:none;padding:0.45rem 1rem;font-family:'DM Sans',sans-serif;font-size:0.78rem;font-weight:600;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;">Koppel bol.com</button>
+    <button onclick="disconnectAPI()" id="disconnectBtn" style="display:none;background:transparent;color:#c8853a;border:1px solid rgba(200,133,58,0.4);padding:0.45rem 1rem;font-family:'DM Sans',sans-serif;font-size:0.78rem;cursor:pointer;border-radius:2px;">Wissel account</button>
   </div>
-  <div>
-    <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#c8853a;letter-spacing:1px;text-transform:uppercase;margin-bottom:0.25rem;">Status</div>
-    <span class="conn-status-idle" id="connStatus" style="font-family:'DM Mono',monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(200,133,58,0.1);color:#c8853a;border:1px solid rgba(200,133,58,0.3);">Niet verbonden</span>
+  <div id="liveIndicator" style="display:none;font-family:'DM Mono',monospace;font-size:0.72rem;color:#6fcf97;">
+    <span style="display:inline-block;width:8px;height:8px;background:#2d6a4f;border-radius:50%;margin-right:6px;vertical-align:middle;"></span>LIVE
   </div>
-  <div style="padding-top:1.1rem;">
-    <button onclick="connectAPI()" style="background:#c8853a;color:white;border:none;padding:0.55rem 1.2rem;font-family:'DM Sans',sans-serif;font-size:0.82rem;font-weight:600;cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;">🔌 Verbinden</button>
-  </div>
-  <div id="liveIndicator" style="display:none;font-family:'DM Mono',monospace;font-size:0.72rem;color:#6fcf97;padding-top:1.1rem;">
-    <span style="display:inline-block;width:8px;height:8px;background:#2d6a4f;border-radius:50%;margin-right:6px;animation:pulse 2s infinite;"></span>LIVE
-  </div>
-  <div style="margin-left:auto;display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
-    <div>
-      <div style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#c8853a;letter-spacing:1px;text-transform:uppercase;margin-bottom:0.25rem;">Periode</div>
-      <div style="display:flex;gap:0.5rem;align-items:center;">
-        <input type="date" id="startDate" style="background:rgba(255,255,255,0.08);border:1px solid rgba(200,133,58,0.3);color:#e8c89a;padding:0.35rem 0.6rem;font-size:0.8rem;border-radius:2px;outline:none;" />
-        <span style="color:#c8853a;font-size:0.8rem;">→</span>
-        <input type="date" id="endDate" style="background:rgba(255,255,255,0.08);border:1px solid rgba(200,133,58,0.3);color:#e8c89a;padding:0.35rem 0.6rem;font-size:0.8rem;border-radius:2px;outline:none;" />
-      </div>
-    </div>
+  <div style="margin-left:auto;display:flex;gap:0.75rem;align-items:center;">
+    <span style="font-family:'DM Mono',monospace;font-size:0.68rem;color:#c8853a;letter-spacing:1px;text-transform:uppercase;">Periode:</span>
+    <input type="date" id="startDate" style="background:rgba(255,255,255,0.08);border:1px solid rgba(200,133,58,0.3);color:#e8c89a;padding:0.35rem 0.6rem;font-size:0.8rem;border-radius:2px;outline:none;" />
+    <span style="color:#c8853a;font-size:0.8rem;">to</span>
+    <input type="date" id="endDate" style="background:rgba(255,255,255,0.08);border:1px solid rgba(200,133,58,0.3);color:#e8c89a;padding:0.35rem 0.6rem;font-size:0.8rem;border-radius:2px;outline:none;" />
+    <button onclick="loadLiveData()" id="refreshBtn" style="display:none;background:transparent;color:#c8853a;border:1px solid rgba(200,133,58,0.4);padding:0.45rem 0.9rem;font-size:0.78rem;cursor:pointer;border-radius:2px;">Ververs</button>
   </div>
 </div>
-
 <ul class="nav-tabs" id="navTabs">
   <li class="active" data-tab="analyse"><span class="tab-icon">📊</span> Advertentie Analyse</li>
   <li data-tab="scorer"><span class="tab-icon">🎯</span> Tekst Scorer</li>
@@ -748,91 +738,98 @@
 // ===================================================
 // API CONNECTION + CREDENTIALS POPUP
 // ===================================================
+
+const BACKEND_URL = 'https://thewootz-api.vercel.app';
 let apiToken = null;
 let tokenExpiry = 0;
-let backendUrl = '';
 
-// Default dates
-const today = new Date();
-const thirtyAgo = new Date(today - 30*86400000);
-document.getElementById('endDate').value = today.toISOString().split('T')[0];
-document.getElementById('startDate').value = thirtyAgo.toISOString().split('T')[0];
+const _today = new Date();
+const _thirtyAgo = new Date(_today - 30*86400000);
+document.getElementById('endDate').value = _today.toISOString().split('T')[0];
+document.getElementById('startDate').value = _thirtyAgo.toISOString().split('T')[0];
 
-// Restore saved URL
-const savedUrl = localStorage.getItem('thewootz_backend_url');
-if (savedUrl) document.getElementById('backendUrl').value = savedUrl;
+window.addEventListener('load', () => {
+  const c = getStoredCreds();
+  if (c.clientId && c.clientSecret) fetchToken();
+});
 
 function getStoredCreds() {
-  return {
-    clientId: sessionStorage.getItem('bol_client_id') || '',
-    clientSecret: sessionStorage.getItem('bol_client_secret') || ''
-  };
+  return { clientId: sessionStorage.getItem('bol_client_id')||'', clientSecret: sessionStorage.getItem('bol_client_secret')||'' };
 }
 
 function setConnStatus(msg, type) {
   const el = document.getElementById('connStatus');
   el.textContent = msg;
-  if (type === 'ok') el.style.cssText = 'font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(45,106,79,0.2);color:#6fcf97;border:1px solid rgba(45,106,79,0.4);';
-  else if (type === 'err') el.style.cssText = 'font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(155,34,38,0.2);color:#eb5757;border:1px solid rgba(155,34,38,0.4);';
-  else el.style.cssText = 'font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(200,133,58,0.1);color:#c8853a;border:1px solid rgba(200,133,58,0.3);';
+  if (type==='ok') el.style.cssText='font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(45,106,79,0.2);color:#6fcf97;border:1px solid rgba(45,106,79,0.4);';
+  else if (type==='err') el.style.cssText='font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(155,34,38,0.2);color:#eb5757;border:1px solid rgba(155,34,38,0.4);';
+  else el.style.cssText='font-family:DM Mono,monospace;font-size:0.72rem;padding:4px 10px;border-radius:2px;background:rgba(200,133,58,0.1);color:#c8853a;border:1px solid rgba(200,133,58,0.3);';
 }
 
-function connectAPI() {
-  const url = document.getElementById('backendUrl').value.trim().replace(/\/$/,'');
-  if (!url) { alert('Voer een Vercel URL in.'); return; }
-  backendUrl = url;
-  localStorage.setItem('thewootz_backend_url', url);
-  const creds = getStoredCreds();
-  if (!creds.clientId || !creds.clientSecret) {
-    showCredentialsPopup();
-  } else {
-    fetchToken();
-  }
-}
+function showCredentialsPopup() { document.getElementById('credPopup').style.display='flex'; }
+function hideCredentialsPopup() { document.getElementById('credPopup').style.display='none'; }
 
-function showCredentialsPopup() {
-  document.getElementById('credPopup').style.display = 'flex';
-}
-
-function hideCredentialsPopup() {
-  document.getElementById('credPopup').style.display = 'none';
+function disconnectAPI() {
+  sessionStorage.removeItem('bol_client_id'); sessionStorage.removeItem('bol_client_secret');
+  apiToken = null;
+  setConnStatus('Niet verbonden','idle');
+  document.getElementById('liveIndicator').style.display='none';
+  document.getElementById('koppelBtn').style.display='inline-block';
+  document.getElementById('disconnectBtn').style.display='none';
+  document.getElementById('refreshBtn').style.display='none';
 }
 
 function submitCredentials() {
-  const clientId = document.getElementById('popupClientId').value.trim();
-  const clientSecret = document.getElementById('popupClientSecret').value.trim();
-  if (!clientId || !clientSecret) { alert('Vul beide velden in.'); return; }
-  sessionStorage.setItem('bol_client_id', clientId);
-  sessionStorage.setItem('bol_client_secret', clientSecret);
+  const id = document.getElementById('popupClientId').value.trim();
+  const secret = document.getElementById('popupClientSecret').value.trim();
+  if (!id||!secret) { alert('Vul beide velden in.'); return; }
+  sessionStorage.setItem('bol_client_id', id);
+  sessionStorage.setItem('bol_client_secret', secret);
   hideCredentialsPopup();
   fetchToken();
 }
 
+async function ensureToken() {
+  if (!apiToken || Date.now() > tokenExpiry) await fetchToken();
+  return apiToken;
+}
+
 async function fetchToken() {
-  setConnStatus('⏳ Verbinden...', 'idle');
-  const creds = getStoredCreds();
+  setConnStatus('Verbinden...','idle');
+  const c = getStoredCreds();
   try {
-    const res = await fetch(backendUrl + '/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId: creds.clientId, clientSecret: creds.clientSecret })
+    const res = await fetch(BACKEND_URL+'/api/token', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({clientId:c.clientId, clientSecret:c.clientSecret})
     });
-    if (!res.ok) {
-      const err = await res.json();
-      setConnStatus('❌ ' + (err.detail || err.error || 'Fout'), 'err');
-      return false;
-    }
+    if (!res.ok) { const e=await res.json(); setConnStatus('Ongeldige gegevens','err'); return false; }
     const data = await res.json();
     apiToken = data.access_token;
-    tokenExpiry = Date.now() + (data.expires_in - 30) * 1000;
-    setConnStatus('✅ Verbonden', 'ok');
-    document.getElementById('liveIndicator').style.display = 'flex';
+    tokenExpiry = Date.now() + (data.expires_in-30)*1000;
+    setConnStatus('Verbonden','ok');
+    document.getElementById('liveIndicator').style.display='inline-flex';
+    document.getElementById('koppelBtn').style.display='none';
+    document.getElementById('disconnectBtn').style.display='inline-block';
+    document.getElementById('refreshBtn').style.display='inline-block';
+    loadLiveData();
     return true;
-  } catch(e) {
-    setConnStatus('❌ ' + e.message, 'err');
-    return false;
-  }
+  } catch(e) { setConnStatus('Verbinding mislukt','err'); return false; }
 }
+
+async function loadLiveData() {
+  const token = await ensureToken();
+  if (!token) return;
+  const start = document.getElementById('startDate').value;
+  const end = document.getElementById('endDate').value;
+  try {
+    const res = await fetch(BACKEND_URL+'/api/campaigns?startDate='+start+'&endDate='+end, {
+      headers: {'Authorization':'Bearer '+token}
+    });
+    if (!res.ok) throw new Error('API fout');
+    const data = await res.json();
+    if (data.campagnes && data.campagnes.length > 0) renderAnalyse(data.campagnes, true);
+  } catch(e) { console.warn('Live data mislukt:', e.message); }
+}
+
 
 // ===================================================
 // NAV

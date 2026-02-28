@@ -1,6 +1,6 @@
 // api/token.js
-// Veilige OAuth2 token-uitwisseling met bol.com
-// Client secret blijft op de server — nooit in de browser
+// OAuth2 token uitwisseling — credentials komen uit de request body
+// Zodat elke gebruiker zijn eigen bol.com API credentials kan gebruiken
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -15,14 +15,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Credentials komen uit Vercel Environment Variables (nooit hardcoded)
-  const clientId     = process.env.BOL_CLIENT_ID;
-  const clientSecret = process.env.BOL_CLIENT_SECRET;
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  // Credentials komen uit de request body (ingevuld door de gebruiker)
+  const { clientId, clientSecret } = req.body || {};
 
   if (!clientId || !clientSecret) {
-    return res.status(500).json({
-      error: 'Server niet geconfigureerd',
-      hint: 'Voeg BOL_CLIENT_ID en BOL_CLIENT_SECRET toe als Vercel Environment Variables'
+    return res.status(400).json({
+      error: 'Client ID en Client Secret zijn verplicht'
     });
   }
 
@@ -40,19 +40,16 @@ export default async function handler(req, res) {
 
     if (!tokenRes.ok) {
       const errText = await tokenRes.text();
-      console.error('Bol.com token error:', tokenRes.status, errText);
       return res.status(tokenRes.status).json({
-        error: 'Token ophalen mislukt',
-        status: tokenRes.status,
-        detail: tokenRes.status === 401 ? 'Ongeldige client_id of client_secret' : errText
+        error: 'Bol.com authenticatie mislukt',
+        detail: tokenRes.status === 401
+          ? 'Ongeldige Client ID of Client Secret — controleer je gegevens in het bol.com Partnerplatform'
+          : errText
       });
     }
 
     const tokenData = await tokenRes.json();
 
-    // Stuur token terug naar frontend (access_token is tijdelijk, geen secret)
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
       access_token: tokenData.access_token,
       expires_in: tokenData.expires_in || 300,

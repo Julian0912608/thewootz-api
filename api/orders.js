@@ -25,13 +25,16 @@ export default async function handler(req, res) {
     'Accept': 'application/vnd.retailer.v10+json'
   };
 
+  const startTs = new Date(start).getTime();
+  const endTs   = new Date(end).getTime() + 86400000;
+
   try {
-    // Stap 1: lijst van bestellingen ophalen
+    // Alle orders ophalen — stop zodra we orders zien die ouder zijn dan startDate
     let allOrders = [];
     let page = 1;
-    let hasMore = true;
+    let reachedOldOrders = false;
 
-    while (hasMore && page <= 10) {
+    while (!reachedOldOrders && page <= 20) {
       const ordersRes = await fetch(
         `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${page}`,
         { headers }
@@ -47,63 +50,62 @@ export default async function handler(req, res) {
 
       const ordersData = await ordersRes.json();
       const orders = ordersData.orders || [];
-      if (orders.length === 0) { hasMore = false; break; }
-      allOrders = allOrders.concat(orders);
+      if (orders.length === 0) break;
+
+      // Haal details op per batch van 10
+      const detailed = await Promise.all(
+        orders.map(async order => {
+          try {
+            const r = await fetch(`${BASE}/orders/${order.orderId}`, { headers });
+            if (!r.ok) return null;
+            return await r.json();
+          } catch { return null; }
+        })
+      );
+
+      for (const order of detailed) {
+        if (!order) continue;
+        const dt = order.orderPlacedDateTime || '';
+        const ts = dt ? new Date(dt).getTime() : 0;
+
+        if (ts < startTs) {
+          // We're past the start date, stop fetching
+          reachedOldOrders = true;
+          break;
+        }
+
+        if (ts <= endTs) {
+          allOrders.push(order);
+        }
+      }
+
       page++;
-      if (orders.length < 50) hasMore = false;
+      if (orders.length < 50) break;
     }
 
-    // Stap 2: filter op datum via orderPlacedDateTime
-    const startTs = new Date(start).getTime();
-    const endTs   = new Date(end).getTime() + 86400000;
-
-    const filtered = allOrders.filter(order => {
-      const dt = order.orderPlacedDateTime || '';
-      if (!dt) return false;
-      const ts = new Date(dt).getTime();
-      return ts >= startTs && ts <= endTs;
-    });
-
-    // Stap 3: voor elke bestelling de details ophalen (bevat prijs en productnaam)
-    const detailed = await Promise.all(
-      filtered.slice(0, 100).map(async order => {
-        const orderId = order.orderId;
-        try {
-          const detailRes = await fetch(`${BASE}/orders/${orderId}`, { headers });
-          if (!detailRes.ok) return order;
-          return await detailRes.json();
-        } catch { return order; }
-      })
-    );
-
-    // Stap 4: statistieken berekenen uit detail responses
+    // Statistieken berekenen
     let totalOmzet = 0;
     let productMap = {};
     let dagMap = {};
 
-    detailed.forEach(order => {
+    allOrders.forEach(order => {
       const dag = (order.orderPlacedDateTime || '').substring(0, 10);
       const items = order.orderItems || [];
 
       items.forEach(item => {
-        // Prijsvelden proberen
         const unitPrice  = item.unitPrice  || 0;
-        const offerPrice = item.offerPrice  || 0;
-        const prijs = unitPrice || offerPrice || 0;
-        const qty   = item.quantity || item.quantityOrdered || 1;
-        const omzet = prijs * qty;
+        const totalPrice = item.totalPrice  || 0;
+        const qty        = item.quantity    || 1;
+        // unitPrice is per stuk, totalPrice is totaal
+        const omzet = totalPrice || (unitPrice * qty);
         totalOmzet += omzet;
 
-        // Productnaam — zit in item.product of direct op item
         const titel =
           item.product?.title ||
-          item.product?.attributes?.find(a => a.attributeId === 'Title')?.value ||
-          item.title ||
-          item.productTitle ||
-          item.offerReference ||
-          `EAN: ${item.product?.ean || item.ean || '?'}`;
+          item.offer?.reference ||
+          `EAN: ${item.product?.ean || '?'}`;
 
-        const ean = item.product?.ean || item.ean || String(Math.random());
+        const ean = item.product?.ean || item.offer?.offerId || String(Math.random());
 
         if (!productMap[ean]) {
           productMap[ean] = { titel, ean, stuks: 0, omzet: 0 };
@@ -111,7 +113,6 @@ export default async function handler(req, res) {
         productMap[ean].stuks += qty;
         productMap[ean].omzet += omzet;
 
-        // Per dag
         if (dag) {
           if (!dagMap[dag]) dagMap[dag] = { datum: dag, bestellingen: 0, omzet: 0 };
           dagMap[dag].bestellingen += 1;
@@ -120,7 +121,7 @@ export default async function handler(req, res) {
       });
     });
 
-    const totalBestellingen = filtered.length;
+    const totalBestellingen = allOrders.length;
     const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
 
     const topProducten = Object.values(productMap)
@@ -129,9 +130,6 @@ export default async function handler(req, res) {
 
     const perDag = Object.values(dagMap)
       .sort((a, b) => a.datum.localeCompare(b.datum));
-
-    // Debug: stuur ook een sample order mee zodat we de structuur zien
-    const sampleItem = detailed[0]?.orderItems?.[0] || null;
 
     return res.status(200).json({
       samenvatting: {
@@ -142,11 +140,10 @@ export default async function handler(req, res) {
       },
       topProducten,
       perDag,
-      debug: { sampleItem },
       opgehaaldOp: new Date().toISOString()
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message, stack: err.stack?.substring(0, 300) });
+    return res.status(500).json({ error: err.message });
   }
 }

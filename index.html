@@ -517,8 +517,8 @@
     </div>
 
     <div id="dashboardContent" style="display:none;">
-      <!-- KPI kaarten -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:2rem;">
+      <!-- KPI kaarten — 4 stuks -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1.2rem;margin-bottom:2rem;">
         <div class="kpi-card">
           <div class="kpi-label">Totale omzet</div>
           <div class="kpi-value" id="kpiOmzet">€0</div>
@@ -534,18 +534,40 @@
           <div class="kpi-value" id="kpiGem">€0</div>
           <div class="kpi-sub">per bestelling</div>
         </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Gem. per dag</div>
+          <div class="kpi-value" id="kpiPerDag">€0</div>
+          <div class="kpi-sub">dagelijkse omzet</div>
+        </div>
       </div>
 
-      <!-- Top producten -->
-      <div class="card" style="margin-bottom:2rem;">
-        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">🏆 Top producten</h3>
-        <div id="topProductenTable"></div>
+      <!-- Top producten + conversie tips naast elkaar -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+
+        <!-- Top producten tabel -->
+        <div class="card">
+          <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">🏆 Top producten</h3>
+          <div id="topProductenTable"></div>
+        </div>
+
+        <!-- Conversie insights -->
+        <div class="card">
+          <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">💡 Conversie tips</h3>
+          <div id="conversieTips"></div>
+        </div>
+
       </div>
 
-      <!-- Omzet per dag -->
-      <div class="card">
+      <!-- Omzet per dag — volledige breedte -->
+      <div class="card" style="margin-bottom:1.5rem;">
         <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">📈 Omzet per dag</h3>
         <div id="omzetPerDagChart" style="overflow-x:auto;"></div>
+      </div>
+
+      <!-- Actiepunten — volledige breedte -->
+      <div class="card" id="actiepuntenCard" style="display:none;background:linear-gradient(135deg,rgba(200,133,58,0.08),rgba(200,133,58,0.03));border:1px solid rgba(200,133,58,0.2);">
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">🎯 Concrete actiepunten voor meer verkoop</h3>
+        <div id="actiepunten" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;"></div>
       </div>
     </div>
   </div>
@@ -985,10 +1007,17 @@ function renderDashboard(data) {
   document.getElementById('dashboardContent').style.display = 'block';
 
   // KPI's
-  document.getElementById('kpiOmzet').textContent = '€' + (s.totalOmzet || 0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmt = (n) => '€' + (n||0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('kpiOmzet').textContent = fmt(s.totalOmzet);
   document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen || 0).toLocaleString('nl-NL');
-  document.getElementById('kpiGem').textContent = '€' + (s.gemOmzetPerBestelling || 0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('kpiGem').textContent = fmt(s.gemOmzetPerBestelling);
   document.getElementById('kpiPeriode').textContent = (s.periode?.start || '') + ' → ' + (s.periode?.end || '');
+
+  // Gem per dag berekenen
+  const perDagData = data.perDag || [];
+  const dagMet0mzet = perDagData.filter(d => d.omzet > 0);
+  const gemPerDag = dagMet0mzet.length > 0 ? (s.totalOmzet / dagMet0mzet.length) : 0;
+  document.getElementById('kpiPerDag').textContent = fmt(gemPerDag);
 
   // Top producten tabel
   const prods = data.topProducten || [];
@@ -997,32 +1026,120 @@ function renderDashboard(data) {
   } else {
     const maxOmzet = Math.max(...prods.map(p => p.omzet));
     document.getElementById('topProductenTable').innerHTML = `
-      <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+      <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
         <thead>
           <tr style="border-bottom:1px solid rgba(200,133,58,0.2);">
-            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">#</th>
-            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Product</th>
-            <th style="text-align:right;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Stuks</th>
-            <th style="text-align:right;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Omzet</th>
-            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;width:30%;">Aandeel</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:#888;font-weight:600;font-size:0.72rem;text-transform:uppercase;">#</th>
+            <th style="text-align:left;padding:0.4rem 0.5rem;color:#888;font-weight:600;font-size:0.72rem;text-transform:uppercase;">Product</th>
+            <th style="text-align:right;padding:0.4rem 0.5rem;color:#888;font-weight:600;font-size:0.72rem;text-transform:uppercase;">Stuks</th>
+            <th style="text-align:right;padding:0.4rem 0.5rem;color:#888;font-weight:600;font-size:0.72rem;text-transform:uppercase;">Omzet</th>
           </tr>
         </thead>
         <tbody>
           ${prods.map((p, i) => `
             <tr style="border-bottom:1px solid rgba(0,0,0,0.04);">
-              <td style="padding:0.6rem 0.75rem;color:#aaa;font-size:0.75rem;">${i+1}</td>
-              <td style="padding:0.6rem 0.75rem;font-weight:500;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.titel}</td>
-              <td style="padding:0.6rem 0.75rem;text-align:right;">${p.stuks}</td>
-              <td style="padding:0.6rem 0.75rem;text-align:right;font-weight:600;color:var(--wood-warm);">€${p.omzet.toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-              <td style="padding:0.6rem 0.75rem;">
-                <div style="background:rgba(200,133,58,0.1);border-radius:2px;height:8px;width:100%;">
-                  <div style="background:var(--wood-warm);border-radius:2px;height:8px;width:${Math.round(p.omzet/maxOmzet*100)}%;"></div>
+              <td style="padding:0.5rem 0.5rem;color:#aaa;font-size:0.72rem;">${i+1}</td>
+              <td style="padding:0.5rem 0.5rem;font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.titel}">${p.titel}</td>
+              <td style="padding:0.5rem 0.5rem;text-align:right;">${p.stuks}</td>
+              <td style="padding:0.5rem 0.5rem;text-align:right;font-weight:600;color:var(--wood-warm);">€${p.omzet.toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+            </tr>
+            <tr>
+              <td colspan="4" style="padding:0 0.5rem 0.4rem;">
+                <div style="background:rgba(200,133,58,0.1);border-radius:2px;height:4px;width:100%;">
+                  <div style="background:var(--wood-warm);border-radius:2px;height:4px;width:${Math.round(p.omzet/maxOmzet*100)}%;"></div>
                 </div>
               </td>
             </tr>`).join('')}
         </tbody>
       </table>`;
   }
+
+  // Conversie tips op basis van data
+  const tips = [];
+  const totalBest = s.totalBestellingen || 0;
+  const gemWaarde = s.gemOmzetPerBestelling || 0;
+  const aantalDagen = perDagData.length || 1;
+  const actieveDagen = dagMet0mzet.length;
+  const inactivePct = Math.round((aantalDagen - actieveDagen) / aantalDagen * 100);
+
+  // Analyseer patronen
+  if (prods.length > 0) {
+    const top1aandeel = prods[0].omzet / (s.totalOmzet || 1) * 100;
+    if (top1aandeel > 70) {
+      tips.push({ icon: '⚠️', titel: 'Productrisico', tekst: `${Math.round(top1aandeel)}% van je omzet komt van 1 product. Overweeg meer producten om risico te spreiden.` });
+    }
+    if (prods.length > 1) {
+      tips.push({ icon: '🔗', titel: 'Cross-sell kans', tekst: `Bundel "${prods[0].titel.substring(0,30)}..." met je andere producten voor hogere orderwaarde.` });
+    }
+  }
+
+  if (gemWaarde < 20) {
+    tips.push({ icon: '💶', titel: 'Verhoog orderwaarde', tekst: `Gem. orderwaarde is €${gemWaarde.toFixed(2)}. Voeg bundelaanbiedingen toe of bied gratis verzending boven €25.` });
+  } else if (gemWaarde > 30) {
+    tips.push({ icon: '✅', titel: 'Goede orderwaarde', tekst: `Je orderwaarde van €${gemWaarde.toFixed(2)} is sterk. Focus nu op volumegroei via betere advertenties.` });
+  }
+
+  if (inactivePct > 40) {
+    tips.push({ icon: '📅', titel: 'Onregelmatige verkoop', tekst: `${inactivePct}% van de dagen had geen verkoop. Overweeg dagelijkse advertenties om consistenter te verkopen.` });
+  }
+
+  // Altijd-aanwezige tips
+  tips.push({ icon: '⭐', titel: 'Reviews zijn key', tekst: 'Bestellingen zonder review missen vertrouwen. Stuur na 7 dagen een review-verzoek via bol.com.' });
+  tips.push({ icon: '🔍', titel: 'Zoekwoord optimalisatie', tekst: 'Gebruik de Tekst Scorer tab om te checken of je producttitels de beste zoekwoorden bevatten voor bol.com.' });
+  tips.push({ icon: '📸', titel: 'Afbeeldingen tellen', tekst: 'Producten met 5+ foto\'s (inclusief lifestyle shots) converteren tot 40% beter op bol.com.' });
+
+  document.getElementById('conversieTips').innerHTML = tips.slice(0, 5).map(t => `
+    <div style="display:flex;gap:0.75rem;margin-bottom:0.9rem;padding-bottom:0.9rem;border-bottom:1px solid rgba(0,0,0,0.05);">
+      <div style="font-size:1.2rem;flex-shrink:0;">${t.icon}</div>
+      <div>
+        <div style="font-weight:700;font-size:0.82rem;margin-bottom:0.2rem;color:var(--ink);">${t.titel}</div>
+        <div style="font-size:0.8rem;color:#666;line-height:1.4;">${t.tekst}</div>
+      </div>
+    </div>`).join('');
+
+  // Actiepunten
+  const acties = [
+    {
+      kleur: '#c8853a',
+      icon: '🎯',
+      titel: 'Adverteer op je bestseller',
+      actie: `Zet een gesponsord product campagne op voor "${(prods[0]?.titel || 'je topseller').substring(0,35)}..." met €5-10/dag budget.`,
+      impact: 'Hoog'
+    },
+    {
+      kleur: '#5a9e6e',
+      icon: '📝',
+      titel: 'Optimaliseer productteksten',
+      actie: 'Gebruik de Tekst Scorer om je top 3 producten te scoren. Alles onder 70 punten heeft direct verbeterpotentieel.',
+      impact: 'Middel'
+    },
+    {
+      kleur: '#6b8fd8',
+      icon: '🏷️',
+      titel: 'Prijsstrategie herzien',
+      actie: `Je gem. orderwaarde is €${gemWaarde.toFixed(0)}. Test gratis verzending boven €${Math.round(gemWaarde * 1.3)} om hogere bestellingen te stimuleren.`,
+      impact: 'Middel'
+    },
+    {
+      kleur: '#b05a9e',
+      icon: '📦',
+      titel: 'Bundel populaire producten',
+      actie: prods.length > 1
+        ? `Maak een bundel van "${(prods[0]?.titel||'').substring(0,20)}..." + "${(prods[1]?.titel||'').substring(0,20)}..." voor €${Math.round((prods[0]?.omzet||20)+(prods[1]?.omzet||10))*0.9/Math.max(prods[0]?.stuks||1,1)}.`
+        : 'Voeg complementaire producten toe aan je assortiment voor cross-sell kansen.',
+      impact: 'Hoog'
+    }
+  ];
+
+  document.getElementById('actiepuntenCard').style.display = 'block';
+  document.getElementById('actiepunten').innerHTML = acties.map(a => `
+    <div style="background:white;border-radius:6px;padding:1rem;border-left:3px solid ${a.kleur};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem;">
+        <div style="font-weight:700;font-size:0.85rem;">${a.icon} ${a.titel}</div>
+        <span style="font-size:0.68rem;background:${a.kleur}22;color:${a.kleur};padding:0.15rem 0.4rem;border-radius:3px;font-weight:600;white-space:nowrap;">Impact: ${a.impact}</span>
+      </div>
+      <div style="font-size:0.8rem;color:#555;line-height:1.45;">${a.actie}</div>
+    </div>`).join('');
 
   // Omzet per dag staafdiagram
   const dagen = data.perDag || [];

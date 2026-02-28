@@ -29,61 +29,64 @@ export default async function handler(req, res) {
   const endTs   = new Date(end).getTime() + 86400000;
 
   try {
-    // Alle orders ophalen — stop zodra we orders zien die ouder zijn dan startDate
-    let allOrders = [];
-    let page = 1;
-    let reachedOldOrders = false;
-
-    while (!reachedOldOrders && page <= 20) {
-      const ordersRes = await fetch(
-        `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${page}`,
-        { headers }
-      );
-
-      if (!ordersRes.ok) {
-        const err = await ordersRes.text();
-        return res.status(ordersRes.status).json({
-          error: `Bestellingen ophalen mislukt (${ordersRes.status})`,
-          detail: err.substring(0, 300)
+    // Stap 1: haal ALLE order-IDs op (alle pagina's, alle statussen)
+    let allOrderIds = [];
+    
+    // Haal per status op zodat we niks missen
+    const statuses = ['OPEN', 'SHIPPED', 'ALL'];
+    
+    for (const status of statuses) {
+      let page = 1;
+      while (page <= 20) {
+        const ordersRes = await fetch(
+          `${BASE}/orders?fulfilment-method=ALL&status=${status}&page=${page}`,
+          { headers }
+        );
+        if (!ordersRes.ok) break;
+        const data = await ordersRes.json();
+        const orders = data.orders || [];
+        if (orders.length === 0) break;
+        
+        orders.forEach(o => {
+          if (!allOrderIds.includes(o.orderId)) {
+            allOrderIds.push(o.orderId);
+          }
         });
+        
+        page++;
+        if (orders.length < 50) break;
       }
+    }
 
-      const ordersData = await ordersRes.json();
-      const orders = ordersData.orders || [];
-      if (orders.length === 0) break;
-
-      // Haal details op per batch van 10
-      const detailed = await Promise.all(
-        orders.map(async order => {
+    // Stap 2: haal details op per order en filter op datum
+    // Doe dit in batches van 10 parallel
+    const allOrders = [];
+    const batchSize = 10;
+    
+    for (let i = 0; i < allOrderIds.length; i += batchSize) {
+      const batch = allOrderIds.slice(i, i + batchSize);
+      const details = await Promise.all(
+        batch.map(async orderId => {
           try {
-            const r = await fetch(`${BASE}/orders/${order.orderId}`, { headers });
+            const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
             if (!r.ok) return null;
             return await r.json();
           } catch { return null; }
         })
       );
-
-      for (const order of detailed) {
-        if (!order) continue;
+      
+      details.forEach(order => {
+        if (!order) return;
         const dt = order.orderPlacedDateTime || '';
-        const ts = dt ? new Date(dt).getTime() : 0;
-
-        if (ts < startTs) {
-          // We're past the start date, stop fetching
-          reachedOldOrders = true;
-          break;
-        }
-
-        if (ts <= endTs) {
+        if (!dt) return;
+        const ts = new Date(dt).getTime();
+        if (ts >= startTs && ts <= endTs) {
           allOrders.push(order);
         }
-      }
-
-      page++;
-      if (orders.length < 50) break;
+      });
     }
 
-    // Statistieken berekenen
+    // Stap 3: statistieken berekenen
     let totalOmzet = 0;
     let productMap = {};
     let dagMap = {};
@@ -96,8 +99,7 @@ export default async function handler(req, res) {
         const unitPrice  = item.unitPrice  || 0;
         const totalPrice = item.totalPrice  || 0;
         const qty        = item.quantity    || 1;
-        // unitPrice is per stuk, totalPrice is totaal
-        const omzet = totalPrice || (unitPrice * qty);
+        const omzet      = totalPrice || (unitPrice * qty);
         totalOmzet += omzet;
 
         const titel =

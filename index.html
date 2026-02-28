@@ -820,14 +820,53 @@ async function loadLiveData() {
   if (!token) return;
   const start = document.getElementById('startDate').value;
   const end = document.getElementById('endDate').value;
+
+  // Toon laad-indicator
+  document.getElementById('analysePlaceholder').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span></div>
+      <p style="margin-top:1rem;">Campagne data ophalen van bol.com...</p>
+    </div>`;
+
   try {
     const res = await fetch(BACKEND_URL+'/api/campaigns?startDate='+start+'&endDate='+end, {
       headers: {'Authorization':'Bearer '+token}
     });
-    if (!res.ok) throw new Error('API fout');
+
     const data = await res.json();
-    if (data.campagnes && data.campagnes.length > 0) renderAnalyse(data.campagnes, true);
-  } catch(e) { console.warn('Live data mislukt:', e.message); }
+
+    if (!res.ok) {
+      // Toon de fout op het scherm
+      document.getElementById('analysePlaceholder').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">⚠️</div>
+          <p style="color:var(--danger);font-weight:600;">${data.error || 'API fout '+res.status}</p>
+          <p style="font-size:0.8rem;color:#888;margin-top:0.5rem;">${data.hint || data.detail || ''}</p>
+          <button class="btn btn-secondary" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
+        </div>`;
+      return;
+    }
+
+    if (data.campagnes && data.campagnes.length > 0) {
+      renderAnalyse(data.campagnes, true);
+    } else {
+      document.getElementById('analysePlaceholder').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <p>Geen campagnes gevonden voor de periode ${start} → ${end}</p>
+          <p style="font-size:0.8rem;color:#aaa;margin-top:0.5rem;">${data.bericht || ''}</p>
+          <button class="btn btn-secondary" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
+        </div>`;
+    }
+
+  } catch(e) {
+    document.getElementById('analysePlaceholder').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">❌</div>
+        <p style="color:var(--danger);">Verbinding mislukt: ${e.message}</p>
+        <button class="btn btn-secondary" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
+      </div>`;
+  }
 }
 
 

@@ -477,6 +477,7 @@
   </div>
 </div>
 <ul class="nav-tabs" id="navTabs">
+  <li data-tab="dashboard"><span class="tab-icon">🏠</span> Sales Dashboard</li>
   <li class="active" data-tab="analyse"><span class="tab-icon">📊</span> Advertentie Analyse</li>
   <li data-tab="scorer"><span class="tab-icon">🎯</span> Tekst Scorer</li>
   <li data-tab="generator"><span class="tab-icon">✨</span> Tekst Generator</li>
@@ -484,6 +485,70 @@
 </ul>
 
 <div class="main">
+
+  <!-- ================================ TAB 0: SALES DASHBOARD ================================ -->
+  <div class="tab-content" id="tab-dashboard">
+    <div class="section-header">
+      <h2>Sales Dashboard</h2>
+      <p>Live omzet en bestellingen rechtstreeks uit je bol.com account.</p>
+    </div>
+
+    <div id="dashboardNotConnected" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon">🔌</div>
+        <p>Verbind je bol.com account via de knop bovenaan om live data te zien.</p>
+        <button class="btn btn-primary" onclick="showCredentialsPopup()">Koppel bol.com</button>
+      </div>
+    </div>
+
+    <div id="dashboardLoading" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span></div>
+        <p style="margin-top:1rem;">Bestellingen ophalen van bol.com...</p>
+      </div>
+    </div>
+
+    <div id="dashboardError" style="display:none;">
+      <div class="empty-state">
+        <div class="empty-icon">⚠️</div>
+        <p id="dashboardErrorMsg" style="color:var(--danger);font-weight:600;"></p>
+        <p style="font-size:0.8rem;color:#888;margin-top:0.5rem;" id="dashboardErrorDetail"></p>
+      </div>
+    </div>
+
+    <div id="dashboardContent" style="display:none;">
+      <!-- KPI kaarten -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-bottom:2rem;">
+        <div class="kpi-card">
+          <div class="kpi-label">Totale omzet</div>
+          <div class="kpi-value" id="kpiOmzet">€0</div>
+          <div class="kpi-sub" id="kpiPeriode"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Bestellingen</div>
+          <div class="kpi-value" id="kpiBestellingen">0</div>
+          <div class="kpi-sub">in de geselecteerde periode</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Gem. orderwaarde</div>
+          <div class="kpi-value" id="kpiGem">€0</div>
+          <div class="kpi-sub">per bestelling</div>
+        </div>
+      </div>
+
+      <!-- Top producten -->
+      <div class="card" style="margin-bottom:2rem;">
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">🏆 Top producten</h3>
+        <div id="topProductenTable"></div>
+      </div>
+
+      <!-- Omzet per dag -->
+      <div class="card">
+        <h3 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--ink);">📈 Omzet per dag</h3>
+        <div id="omzetPerDagChart" style="overflow-x:auto;"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ================================ TAB 1: ANALYSE ================================ -->
   <div class="tab-content active" id="tab-analyse">
@@ -811,6 +876,7 @@ async function fetchToken() {
     document.getElementById('disconnectBtn').style.display='inline-block';
     document.getElementById('refreshBtn').style.display='inline-block';
     loadLiveData();
+    loadDashboard();
     return true;
   } catch(e) { setConnStatus('Verbinding mislukt','err'); return false; }
 }
@@ -871,6 +937,112 @@ async function loadLiveData() {
 
 
 // ===================================================
+// SALES DASHBOARD
+// ===================================================
+
+async function loadDashboard() {
+  const token = await ensureToken();
+  if (!token) {
+    document.getElementById('dashboardNotConnected').style.display = 'block';
+    document.getElementById('dashboardLoading').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('dashboardNotConnected').style.display = 'none';
+  document.getElementById('dashboardError').style.display = 'none';
+  document.getElementById('dashboardContent').style.display = 'none';
+  document.getElementById('dashboardLoading').style.display = 'block';
+
+  const start = document.getElementById('startDate').value;
+  const end = document.getElementById('endDate').value;
+
+  try {
+    const res = await fetch(BACKEND_URL + '/api/orders?startDate=' + start + '&endDate=' + end, {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    const data = await res.json();
+
+    document.getElementById('dashboardLoading').style.display = 'none';
+
+    if (!res.ok) {
+      document.getElementById('dashboardErrorMsg').textContent = data.error || 'Fout bij ophalen data';
+      document.getElementById('dashboardErrorDetail').textContent = data.detail || '';
+      document.getElementById('dashboardError').style.display = 'block';
+      return;
+    }
+
+    renderDashboard(data);
+
+  } catch(e) {
+    document.getElementById('dashboardLoading').style.display = 'none';
+    document.getElementById('dashboardErrorMsg').textContent = 'Verbinding mislukt: ' + e.message;
+    document.getElementById('dashboardError').style.display = 'block';
+  }
+}
+
+function renderDashboard(data) {
+  const s = data.samenvatting || {};
+  document.getElementById('dashboardContent').style.display = 'block';
+
+  // KPI's
+  document.getElementById('kpiOmzet').textContent = '€' + (s.totalOmzet || 0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen || 0).toLocaleString('nl-NL');
+  document.getElementById('kpiGem').textContent = '€' + (s.gemOmzetPerBestelling || 0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('kpiPeriode').textContent = (s.periode?.start || '') + ' → ' + (s.periode?.end || '');
+
+  // Top producten tabel
+  const prods = data.topProducten || [];
+  if (prods.length === 0) {
+    document.getElementById('topProductenTable').innerHTML = '<p style="color:#aaa;font-size:0.85rem;">Geen producten gevonden in deze periode.</p>';
+  } else {
+    const maxOmzet = Math.max(...prods.map(p => p.omzet));
+    document.getElementById('topProductenTable').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+        <thead>
+          <tr style="border-bottom:1px solid rgba(200,133,58,0.2);">
+            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">#</th>
+            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Product</th>
+            <th style="text-align:right;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Stuks</th>
+            <th style="text-align:right;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;">Omzet</th>
+            <th style="text-align:left;padding:0.5rem 0.75rem;color:#888;font-weight:600;font-size:0.75rem;letter-spacing:0.5px;text-transform:uppercase;width:30%;">Aandeel</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${prods.map((p, i) => `
+            <tr style="border-bottom:1px solid rgba(0,0,0,0.04);">
+              <td style="padding:0.6rem 0.75rem;color:#aaa;font-size:0.75rem;">${i+1}</td>
+              <td style="padding:0.6rem 0.75rem;font-weight:500;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.titel}</td>
+              <td style="padding:0.6rem 0.75rem;text-align:right;">${p.stuks}</td>
+              <td style="padding:0.6rem 0.75rem;text-align:right;font-weight:600;color:var(--wood-warm);">€${p.omzet.toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+              <td style="padding:0.6rem 0.75rem;">
+                <div style="background:rgba(200,133,58,0.1);border-radius:2px;height:8px;width:100%;">
+                  <div style="background:var(--wood-warm);border-radius:2px;height:8px;width:${Math.round(p.omzet/maxOmzet*100)}%;"></div>
+                </div>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  // Omzet per dag staafdiagram
+  const dagen = data.perDag || [];
+  if (dagen.length === 0) {
+    document.getElementById('omzetPerDagChart').innerHTML = '<p style="color:#aaa;font-size:0.85rem;">Geen dagdata beschikbaar.</p>';
+  } else {
+    const maxDagOmzet = Math.max(...dagen.map(d => d.omzet), 1);
+    const barWidth = Math.max(20, Math.min(40, Math.floor(800 / dagen.length)));
+    document.getElementById('omzetPerDagChart').innerHTML = `
+      <div style="display:flex;align-items:flex-end;gap:3px;height:120px;padding-bottom:1.5rem;position:relative;min-width:${dagen.length * (barWidth+3)}px;">
+        ${dagen.map(d => `
+          <div title="${d.datum}: €${d.omzet.toLocaleString('nl-NL', {minimumFractionDigits:2})}" style="flex:0 0 ${barWidth}px;display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <div style="width:100%;background:var(--wood-warm);border-radius:2px 2px 0 0;height:${Math.max(3, Math.round(d.omzet/maxDagOmzet*100))}px;opacity:0.85;transition:opacity 0.2s;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.85"></div>
+            <div style="font-size:0.55rem;color:#aaa;transform:rotate(-45deg);transform-origin:top left;white-space:nowrap;margin-top:4px;">${d.datum.substring(5)}</div>
+          </div>`).join('')}
+      </div>`;
+  }
+}
+
+// ===================================================
 // NAV
 // ===================================================
 document.querySelectorAll('#navTabs li').forEach(tab => {
@@ -879,6 +1051,8 @@ document.querySelectorAll('#navTabs li').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    // Laad dashboard als je erop klikt
+    if (tab.dataset.tab === 'dashboard') loadDashboard();
   });
 });
 

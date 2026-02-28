@@ -962,11 +962,16 @@ async function loadLiveData() {
 // SALES DASHBOARD
 // ===================================================
 
+let dashboardLoading = false;
 async function loadDashboard() {
+  if (dashboardLoading) return;
+  dashboardLoading = true;
+
   const token = await ensureToken();
   if (!token) {
     document.getElementById('dashboardNotConnected').style.display = 'block';
     document.getElementById('dashboardLoading').style.display = 'none';
+    dashboardLoading = false;
     return;
   }
 
@@ -994,11 +999,13 @@ async function loadDashboard() {
     }
 
     renderDashboard(data);
+    dashboardLoading = false;
 
   } catch(e) {
     document.getElementById('dashboardLoading').style.display = 'none';
     document.getElementById('dashboardErrorMsg').textContent = 'Verbinding mislukt: ' + e.message;
     document.getElementById('dashboardError').style.display = 'block';
+    dashboardLoading = false;
   }
 }
 
@@ -1169,7 +1176,7 @@ document.querySelectorAll('#navTabs li').forEach(tab => {
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
     // Laad dashboard als je erop klikt
-    if (tab.dataset.tab === 'dashboard') loadDashboard();
+    if (tab.dataset.tab === 'dashboard' && document.getElementById('dashboardContent').style.display === 'none') loadDashboard();
   });
 });
 

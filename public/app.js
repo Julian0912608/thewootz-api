@@ -315,12 +315,72 @@ function onStoreChange() {
   }
 }
 
+
 function selectPlatform(p) {
   selectedPlatform = p;
   ['bol','etsy','amazon'].forEach(pl => {
     const btn = document.getElementById('platformBtn-' + pl);
     if (btn) btn.className = pl === p ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
   });
+
+  const bolForm   = document.getElementById('bolConnectForm');
+  const oauthForm = document.getElementById('oauthConnectForm');
+  const oauthInfo = document.getElementById('oauthPlatformInfo');
+
+  if (p === 'bol') {
+    if (bolForm)   bolForm.style.display   = 'block';
+    if (oauthForm) oauthForm.style.display = 'none';
+  } else {
+    if (bolForm)   bolForm.style.display   = 'none';
+    if (oauthForm) oauthForm.style.display = 'block';
+
+    const platformInfo = {
+      etsy: {
+        icon: '🎨', name: 'Etsy',
+        desc: 'Verbind je Etsy shop via veilige OAuth. Je wordt doorgestuurd naar Etsy om toegang te verlenen.',
+        note: 'Vereist: een actieve Etsy seller account.',
+        btnLabel: 'Verbind met Etsy'
+      },
+      amazon: {
+        icon: '📦', name: 'Amazon',
+        desc: 'Verbind je Amazon Seller account via de Selling Partner API.',
+        note: '⚠️ Vereist Amazon SP-API developer goedkeuring (1-2 weken). Vraag je Developer ID aan in Amazon Seller Central.',
+        btnLabel: 'Verbind met Amazon'
+      }
+    };
+
+    const i = platformInfo[p] || { icon:'🔗', name: p, desc:'', note:'', btnLabel:'Verbinden' };
+    if (oauthInfo) oauthInfo.innerHTML = `
+      <div style="text-align:center;padding:1rem 0 0.5rem;">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem;">${i.icon}</div>
+        <div style="font-weight:600;font-size:1rem;margin-bottom:0.4rem;">${i.name} koppelen</div>
+        <div style="font-size:0.82rem;color:var(--muted-fg);margin-bottom:0.75rem;line-height:1.5;">${i.desc}</div>
+        <div class="alert alert-info" style="font-size:0.75rem;text-align:left;margin-bottom:1rem;">${i.note}</div>
+        <button class="btn btn-primary" style="width:100%;" onclick="startOAuth('${p}')">🔗 ${i.btnLabel}</button>
+      </div>`;
+  }
+}
+
+async function startOAuth(platform) {
+  if (!await ensureSession()) return;
+  try {
+    const res  = await fetch(`${API}/api/sync/${platform}?action=oauth-url`, { headers: getAuthHeaders() });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'OAuth starten mislukt — controleer of de API keys geconfigureerd zijn in Vercel.'); return; }
+    window.open(data.url, '_blank', 'width=620,height=700,left=200,top=100');
+
+    // Poll elke 3s of store is bijgekomen
+    let polls = 0;
+    const poll = setInterval(async () => {
+      polls++;
+      await loadStores();
+      const newStore = currentStores.find(s => s.platform === platform);
+      if (newStore || polls > 40) {
+        clearInterval(poll);
+        if (newStore) { showToast(`✅ ${platform} succesvol gekoppeld!`); switchTab('stores'); }
+      }
+    }, 3000);
+  } catch (e) { alert('Verbinding mislukt: ' + e.message); }
 }
 
 async function addStore() {
@@ -340,7 +400,7 @@ async function addStore() {
     const res = await fetch(`${API}/api/stores`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ platform: selectedPlatform, name: name || undefined, clientId, clientSecret })
+      body: JSON.stringify({ platform: 'bol', name: name || undefined, clientId, clientSecret })
     });
     const data = await res.json();
 
@@ -350,14 +410,11 @@ async function addStore() {
       return;
     }
 
-    // Success! Clear form
     document.getElementById('storeName').value         = '';
     document.getElementById('storeClientId').value     = '';
     document.getElementById('storeClientSecret').value = '';
 
     await loadStores();
-
-    // Vraag of ze direct willen synchroniseren
     const storeId = data.store.id;
     const doSync  = confirm(`✅ Winkel "${data.store.name}" gekoppeld!\n\nWil je nu direct een volledige sync uitvoeren? Dit importeert je bestellingen van de afgelopen 90 dagen.\n\n(Dit duurt ~30 seconden)`);
     if (doSync) triggerSyncForStore(storeId, true);
@@ -365,6 +422,24 @@ async function addStore() {
   } catch (e) { errEl.textContent = 'Verbinding mislukt: ' + e.message; errEl.style.display = 'block'; }
   finally { btn.disabled = false; btn.textContent = '🔗 Winkel koppelen & valideren'; }
 }
+
+// Toast notificatie
+function showToast(msg, type = 'success') {
+  const toast = document.createElement('div');
+  toast.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:${type==='success'?'var(--success)':'var(--danger)'};color:#fff;padding:0.75rem 1.25rem;border-radius:0.6rem;font-size:0.85rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,0.2);animation:slideUp 0.3s ease;`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
+}
+
+// Check OAuth callback params bij pagina laden
+window.addEventListener('load', () => {
+  const p = new URLSearchParams(window.location.search);
+  if (p.get('etsy_connected'))   { setTimeout(() => { showToast('✅ Etsy winkel gekoppeld!'); loadStores(); }, 800); window.history.replaceState({}, '', '/'); }
+  if (p.get('amazon_connected')) { setTimeout(() => { showToast('✅ Amazon winkel gekoppeld!'); loadStores(); }, 800); window.history.replaceState({}, '', '/'); }
+  if (p.get('etsy_error') || p.get('amazon_error')) { setTimeout(() => { showToast('❌ Koppeling mislukt. Probeer opnieuw.', 'error'); }, 800); window.history.replaceState({}, '', '/'); }
+});
+
 
 async function deleteStore(storeId) {
   if (!confirm('Weet je zeker dat je deze winkel wilt verwijderen? Je gesynchroniseerde data blijft bewaard.')) return;

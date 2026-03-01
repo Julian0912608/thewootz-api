@@ -229,6 +229,7 @@ async function enterApp() {
 }
 
 function switchTab(tab) {
+  if (tab === 'analyse') initAnalyse();
   document.querySelectorAll('#sideNav .nav-item').forEach(i => i.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const navItem = document.querySelector(`[data-tab="${tab}"]`);
@@ -927,9 +928,63 @@ function renderZoekHistory(term) {
 
 
 // ═══════════════════════════════════════════════════════════
-// ANALYSE (CSV upload + live API fallback) — preserved from v1
+// ANALYSE — Advertentie analyse met dataset opslag
 // ═══════════════════════════════════════════════════════════
-function handleFileUpload(e) { const f = e.target.files[0]; if (f) processFile(f); }
+
+// ── Upload modal ─────────────────────────────────────────
+function openUploadModal()  { document.getElementById('uploadModal').classList.add('open'); }
+function closeUploadModal() { document.getElementById('uploadModal').classList.remove('open'); }
+
+// Sluit modal als je buiten klikt
+document.getElementById('uploadModal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeUploadModal();
+});
+
+// ── Dataset opslag in localStorage ───────────────────────
+const DATASETS_KEY = 'thewootz_analyse_datasets';
+
+function getSavedDatasets() {
+  try { return JSON.parse(localStorage.getItem(DATASETS_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function saveAnalyseDataset() {
+  if (!window._lastAnalyseData) return;
+  const name = prompt('Naam voor deze dataset:', 'Dataset ' + new Date().toLocaleDateString('nl-NL'));
+  if (!name) return;
+  const datasets = getSavedDatasets();
+  datasets[name] = { data: window._lastAnalyseData, savedAt: new Date().toISOString() };
+  localStorage.setItem(DATASETS_KEY, JSON.stringify(datasets));
+  refreshDatasetSelect();
+  showToast('Dataset "' + name + '" opgeslagen!', 'success');
+}
+
+function refreshDatasetSelect() {
+  const sel = document.getElementById('analyseDatasetSelect');
+  if (!sel) return;
+  const datasets = getSavedDatasets();
+  const keys = Object.keys(datasets);
+  if (!keys.length) { sel.style.display = 'none'; return; }
+  sel.style.display = 'inline-block';
+  sel.innerHTML = '<option value="">— Opgeslagen datasets —</option>' +
+    keys.map(k => `<option value="${k}">${k} (${new Date(datasets[k].savedAt).toLocaleDateString('nl-NL')})</option>`).join('');
+}
+
+function loadAnalyseDataset(name) {
+  if (!name) return;
+  const datasets = getSavedDatasets();
+  if (datasets[name]) {
+    analyzeData(datasets[name].data);
+    showToast('Dataset "' + name + '" geladen!', 'success');
+  }
+}
+
+// ── File upload ───────────────────────────────────────────
+function handleFileUpload(e) {
+  const f = e.target.files[0];
+  if (f) { closeUploadModal(); processFile(f); }
+}
+
 function processFile(file) {
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -973,8 +1028,13 @@ function showDemoData() {
   ]);
 }
 
+// ── Analyseer data ────────────────────────────────────────
+let _allAnalyseProducts = [];
+
 function analyzeData(rows) {
   if (!rows.length) { showDemoData(); return; }
+  window._lastAnalyseData = rows;
+
   const nameKey = Object.keys(rows[0]).find(k => /naam|name|product|titel|title/i.test(k)) || Object.keys(rows[0])[0];
   const getNum = (row, ...keys) => {
     for (const k of keys) {
@@ -983,49 +1043,139 @@ function analyzeData(rows) {
     }
     return 0;
   };
+
   const products = rows.map(row => ({
-    naam: row[nameKey]||'Onbekend', spend: getNum(row,'uitg','spend','cost','kosten'), impressions: getNum(row,'vert','impr'),
-    clicks: getNum(row,'klik','click'), orders: getNum(row,'best','order','conv'), revenue: getNum(row,'omzet','omz','revenue','sales')
+    naam: row[nameKey]||'Onbekend',
+    spend: getNum(row,'uitg','spend','cost','kosten'),
+    impressions: getNum(row,'vert','impr'),
+    clicks: getNum(row,'klik','click'),
+    orders: getNum(row,'best','order','conv'),
+    revenue: getNum(row,'omzet','omz','revenue','sales')
   })).filter(p=>p.spend>0||p.revenue>0);
+
   if (!products.length) { showDemoData(); return; }
 
-  const totSpend=products.reduce((s,p)=>s+p.spend,0), totRev=products.reduce((s,p)=>s+p.revenue,0), totOrders=products.reduce((s,p)=>s+p.orders,0), totClicks=products.reduce((s,p)=>s+p.clicks,0);
-  const roas=totSpend>0?totRev/totSpend:0, cpc=totClicks>0?totSpend/totClicks:0, cr=totClicks>0?totOrders/totClicks*100:0;
-  const productsWithConv = products.map(p=>({...p, conv:p.clicks>0?p.orders/p.clicks*100:0, roas:p.spend>0?p.revenue/p.spend:0})).sort((a,b)=>b.roas-a.roas);
+  const totSpend   = products.reduce((s,p)=>s+p.spend,0);
+  const totRev     = products.reduce((s,p)=>s+p.revenue,0);
+  const totOrders  = products.reduce((s,p)=>s+p.orders,0);
+  const totClicks  = products.reduce((s,p)=>s+p.clicks,0);
+  const totImpr    = products.reduce((s,p)=>s+p.impressions,0);
+  const roas       = totSpend > 0 ? totRev/totSpend : 0;
+  const cpc        = totClicks > 0 ? totSpend/totClicks : 0;
+  const cr         = totClicks > 0 ? totOrders/totClicks*100 : 0;
+  const ctr        = totImpr > 0 ? totClicks/totImpr*100 : 0;
 
-  const fmt=(n)=>'€'+n.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('kpiGrid').innerHTML=`<div class="kpi-grid" style="margin-top:1rem;margin-bottom:0;">
-    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">💰</div></div><div class="kpi-value">${fmt(totSpend)}</div><div class="kpi-label">Totale uitgaven</div></div>
-    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">📈</div></div><div class="kpi-value">${roas.toFixed(2)}x</div><div class="kpi-label">ROAS</div></div>
-    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">🖱️</div></div><div class="kpi-value">${fmt(cpc)}</div><div class="kpi-label">CPC</div></div>
-    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">🎯</div></div><div class="kpi-value">${cr.toFixed(1)}%</div><div class="kpi-label">Conversiepercentage</div></div>
+  const productsWithConv = products.map(p=>({
+    ...p,
+    conv: p.clicks>0 ? p.orders/p.clicks*100 : 0,
+    roas: p.spend>0 ? p.revenue/p.spend : 0,
+    cpc:  p.clicks>0 ? p.spend/p.clicks : 0
+  })).sort((a,b)=>b.roas-a.roas);
+
+  _allAnalyseProducts = productsWithConv;
+
+  const fmt = n => '€'+n.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const fmtNum = n => n.toLocaleString('nl-NL');
+
+  // ── KPIs ─────────────────────────────────────────────────
+  const roasKleur = roas >= 3 ? 'var(--success)' : roas >= 1.5 ? 'var(--warning)' : 'var(--danger)';
+  document.getElementById('kpiGrid').innerHTML = `<div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">💰</div><span class="kpi-badge">Advertenties</span></div>
+      <div class="kpi-value">${fmt(totSpend)}</div>
+      <div class="kpi-label">Totale uitgaven</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">→ ${fmt(totRev)} omzet gegenereerd</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">📈</div><span class="kpi-badge" style="color:${roasKleur};">${roas>=2?'✓ Goed':roas>=1?'⚠ Laag':'✗ Verlies'}</span></div>
+      <div class="kpi-value" style="color:${roasKleur};">${roas.toFixed(2)}x</div>
+      <div class="kpi-label">ROAS</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">Return on Ad Spend</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">🖱️</div></div>
+      <div class="kpi-value">${fmt(cpc)}</div>
+      <div class="kpi-label">CPC</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">CTR: ${ctr.toFixed(2)}% · ${fmtNum(totClicks)} klikken</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">🎯</div></div>
+      <div class="kpi-value">${cr.toFixed(1)}%</div>
+      <div class="kpi-label">Conversiepercentage</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">${totOrders} bestellingen · ${fmtNum(totImpr)} vertoningen</div>
+    </div>
   </div>`;
 
-  const top3=productsWithConv.slice(0,3), worst3=[...productsWithConv].sort((a,b)=>a.roas-b.roas).slice(0,3);
-  document.getElementById('topWorstGrid').style.display='grid';
-  document.getElementById('topConverters').innerHTML=top3.map((p,i)=>`<div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);"><div style="font-size:1rem;width:24px;text-align:center;">${['🥇','🥈','🥉'][i]}</div><div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.naam}</div><div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Conv: ${p.conv.toFixed(1)}%</div></div></div>`).join('');
-  document.getElementById('worstPerformers').innerHTML=worst3.map(p=>`<div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);"><div style="font-size:1rem;width:24px;text-align:center;">⚠️</div><div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.naam}</div><div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Uitgave: ${fmt(p.spend)}</div></div></div>`).join('');
+  // ── Top & Worst ───────────────────────────────────────────
+  const top3   = productsWithConv.slice(0,3);
+  const worst3 = [...productsWithConv].sort((a,b)=>a.roas-b.roas).filter(p=>p.spend>5).slice(0,3);
+  document.getElementById('topConverters').innerHTML = top3.map((p,i)=>`
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:1rem;width:24px;text-align:center;">${['🥇','🥈','🥉'][i]}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.naam}">${p.naam}</div>
+        <div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Conv: ${p.conv.toFixed(1)}%</div>
+      </div>
+    </div>`).join('');
 
-  // Full table
-  document.getElementById('analysePlaceholder').style.display='none';
-  document.getElementById('analyseResults').style.display='block';
-  const thead=document.querySelector('#fullTable thead tr');
-  thead.innerHTML='<th>Product</th><th>Uitgaven</th><th>Klikken</th><th>Bestellingen</th><th>Omzet</th><th>ROAS</th><th>Conv.%</th>';
-  document.getElementById('fullTableBody').innerHTML=productsWithConv.map(p=>`<tr>
-    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.naam}">${p.naam}</td>
-    <td>${fmt(p.spend)}</td><td>${p.clicks.toLocaleString('nl-NL')}</td><td>${p.orders}</td>
-    <td>${fmt(p.revenue)}</td>
-    <td style="font-weight:600;color:${p.roas>=2?'var(--success)':p.roas>=1?'var(--warning)':'var(--danger)'};">${p.roas.toFixed(2)}x</td>
-    <td>${p.conv.toFixed(1)}%</td>
-  </tr>`).join('');
+  document.getElementById('worstPerformers').innerHTML = worst3.map(p=>`
+    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);">
+      <div style="font-size:1rem;width:24px;text-align:center;">⚠️</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.naam}">${p.naam}</div>
+        <div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Uitgave: ${fmt(p.spend)}</div>
+      </div>
+    </div>`).join('');
 
-  // Recommendations
-  const recs=[];
-  if(roas<1.5)recs.push({type:'warning',msg:'Je totale ROAS is laag (<1.5x). Overweeg budget te verschuiven naar beter presterende producten.'});
-  worst3.filter(p=>p.spend>10&&p.roas<1).forEach(p=>recs.push({type:'danger',msg:`Stop of pauzeer advertentie voor "${p.naam.substring(0,40)}" — negatieve ROAS.`}));
-  top3.slice(0,1).forEach(p=>recs.push({type:'success',msg:`Verhoog budget voor "${p.naam.substring(0,40)}" — beste presteerder (ROAS ${p.roas.toFixed(1)}x).`}));
-  document.getElementById('recommendations').innerHTML=recs.map(r=>`<div class="alert alert-${r.type==='danger'?'danger':r.type==='success'?'success':'warning'}" style="margin-top:0.5rem;">${r.msg}</div>`).join('');
+  // ── Tips ──────────────────────────────────────────────────
+  const recs = [];
+  recs.push({ type: roas>=2?'success':roas>=1?'warning':'danger', msg: roas>=2 ? `✓ Sterke ROAS van ${roas.toFixed(2)}x — je advertenties presteren goed.` : roas>=1 ? `⚠️ ROAS van ${roas.toFixed(2)}x is matig. Streef naar minimaal 2x.` : `✗ ROAS onder 1x — je geeft meer uit dan je verdient. Pauzeer onderpresteerders.` });
+  worst3.filter(p=>p.spend>10&&p.roas<1).forEach(p=>recs.push({type:'danger',msg:`Stop advertentie voor "${p.naam.substring(0,35)}" — ROAS slechts ${p.roas.toFixed(2)}x.`}));
+  if (top3[0]) recs.push({type:'success',msg:`💡 Verhoog budget voor "${top3[0].naam.substring(0,35)}" — beste presteerder met ROAS ${top3[0].roas.toFixed(1)}x.`});
+  if (cr < 2)  recs.push({type:'warning',msg:`Conversiepercentage van ${cr.toFixed(1)}% is laag. Optimaliseer je productpagina en afbeeldingen.`});
+  if (cpc > 1) recs.push({type:'warning',msg:`CPC van ${fmt(cpc)} is hoog. Test lagere biedingen of specifiekere zoekwoorden.`});
+
+  document.getElementById('recommendations').innerHTML = `
+    <div class="card-title">💡 Aanbevelingen</div>
+    ${recs.map(r=>`<div class="alert alert-${r.type==='danger'?'danger':r.type==='success'?'success':'warning'}" style="margin-bottom:0.5rem;font-size:0.8rem;">${r.msg}</div>`).join('')}`;
+
+  // ── Producten tabel ───────────────────────────────────────
+  renderAnalyseTable(productsWithConv, fmt);
+
+  // ── Toon content ─────────────────────────────────────────
+  document.getElementById('analyseEmpty').style.display   = 'none';
+  document.getElementById('analyseContent').style.display = 'block';
+  document.getElementById('saveDatasetBtn').style.display = 'inline-flex';
+  refreshDatasetSelect();
 }
+
+function renderAnalyseTable(products, fmt) {
+  fmt = fmt || (n => '€'+n.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2}));
+  document.getElementById('fullTableHead').innerHTML = '<tr><th>Product</th><th style="text-align:right">Uitgaven</th><th style="text-align:right">Klikken</th><th style="text-align:right">Bestellingen</th><th style="text-align:right">Omzet</th><th style="text-align:right">ROAS</th><th style="text-align:right">Conv.%</th></tr>';
+  document.getElementById('fullTableBody').innerHTML = products.map(p=>`<tr>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.naam}">${p.naam}</td>
+    <td style="text-align:right">${fmt(p.spend)}</td>
+    <td style="text-align:right">${p.clicks.toLocaleString('nl-NL')}</td>
+    <td style="text-align:right">${p.orders}</td>
+    <td style="text-align:right">${fmt(p.revenue)}</td>
+    <td style="text-align:right;font-weight:600;color:${p.roas>=2?'var(--success)':p.roas>=1?'var(--warning)':'var(--danger)'};">${p.roas.toFixed(2)}x</td>
+    <td style="text-align:right">${p.conv.toFixed(1)}%</td>
+  </tr>`).join('');
+}
+
+function filterAnalyseTable(query) {
+  if (!_allAnalyseProducts.length) return;
+  const filtered = query
+    ? _allAnalyseProducts.filter(p => p.naam.toLowerCase().includes(query.toLowerCase()))
+    : _allAnalyseProducts;
+  renderAnalyseTable(filtered);
+}
+
+// Init: laad opgeslagen datasets bij start
+function initAnalyse() {
+  refreshDatasetSelect();
+}
+
 
 // ═══════════════════════════════════════════════════════════
 // TEKST SCORER — preserved from v1

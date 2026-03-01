@@ -475,42 +475,58 @@ async function triggerSyncForStore(storeId, fullSync = false) {
   if (!await ensureSession()) return;
 
   const isFullSync = fullSync === true;
-  openSyncModal(isFullSync
-    ? 'Volledige sync — 90 dagen bestellingen ophalen...'
-    : 'Incrementele sync — recente bestellingen ophalen...'
-  );
+  openSyncModal(isFullSync ? 'Volledige sync gestart...' : 'Bestellingen ophalen...');
 
   let totalOrders = 0;
-  let weekOffset = 0;
-  const maxWeeks = isFullSync ? 13 : 0;
+
+  const updateStatus = (msg) => {
+    document.getElementById('syncModalText').textContent = msg + ` (${totalOrders} verwerkt)`;
+  };
 
   try {
-    do {
-      const weekNum = isFullSync ? `Week ${weekOffset + 1} van ${maxWeeks + 1}` : 'Actuele bestellingen';
-      document.getElementById('syncModalText').textContent =
-        `${weekNum} ophalen... (${totalOrders} bestellingen verwerkt)`;
-
+    // STAP 1: Haal alle huidige orders op via paginering
+    let page = 1;
+    let hasMore = true;
+    while (hasMore) {
+      updateStatus(`Bestellingen ophalen — pagina ${page}`);
       const res = await fetch(`${API}/api/sync/bol`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ storeId, fullSync: isFullSync, weekOffset })
+        method: 'POST', headers: getAuthHeaders(),
+        body: JSON.stringify({ storeId, mode: 'page', page })
       });
       const data = await res.json();
+      if (!res.ok) { showSyncError(data.error, data.detail); return; }
+      totalOrders += data.ordersNew || 0;
+      hasMore = data.hasMore === true;
+      page = data.nextPage || page + 1;
+    }
 
-      if (!res.ok) {
-        document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">${data.error || 'Sync mislukt'}${data.detail ? '<br><small>' + data.detail + '</small>' : ''}</div>`;
-        document.getElementById('syncResult').style.display = 'block';
-        document.getElementById('syncCloseBtn').style.display = 'inline-flex';
-        document.getElementById('syncModalText').textContent = 'Sync mislukt';
-        return;
+    // STAP 2: Volledige sync — haal historische shipped orders op via latest-change-date
+    if (isFullSync) {
+      // Genereer lijst van datums: gisteren tot 90 dagen geleden
+      const dates = [];
+      for (let d = 1; d <= 90; d++) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - d);
+        dates.push(dt.toISOString().split('T')[0]);
       }
 
-      totalOrders += data.ordersNew || 0;
+      for (let i = 0; i < dates.length; i++) {
+        const date = dates[i];
+        updateStatus(`Historische data: ${date} (dag ${i+1}/90)`);
+        const res = await fetch(`${API}/api/sync/bol`, {
+          method: 'POST', headers: getAuthHeaders(),
+          body: JSON.stringify({ storeId, mode: 'date', date })
+        });
+        const data = await res.json();
+        if (res.ok) totalOrders += data.ordersNew || 0;
+      }
+    }
 
-      if (!data.hasMore) break;
-      weekOffset = data.nextWeek;
-
-    } while (weekOffset <= 13);
+    // STAP 3: Finalize
+    await fetch(`${API}/api/sync/bol`, {
+      method: 'POST', headers: getAuthHeaders(),
+      body: JSON.stringify({ storeId, mode: 'finalize' })
+    });
 
     const resultEl = document.getElementById('syncResult');
     resultEl.style.display = 'block';
@@ -521,11 +537,15 @@ async function triggerSyncForStore(storeId, fullSync = false) {
     loadDashboard();
 
   } catch (e) {
-    document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">Verbinding mislukt: ${e.message}</div>`;
-    document.getElementById('syncResult').style.display = 'block';
-    document.getElementById('syncCloseBtn').style.display = 'inline-flex';
-    document.getElementById('syncModalText').textContent = 'Sync mislukt';
+    showSyncError('Verbinding mislukt: ' + e.message);
   }
+}
+
+function showSyncError(msg, detail = '') {
+  document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">${msg}${detail ? '<br><small>' + detail + '</small>' : ''}</div>`;
+  document.getElementById('syncResult').style.display = 'block';
+  document.getElementById('syncCloseBtn').style.display = 'inline-flex';
+  document.getElementById('syncModalText').textContent = 'Sync mislukt';
 }
 
 // ═══════════════════════════════════════════════════════════

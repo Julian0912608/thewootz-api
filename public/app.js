@@ -478,20 +478,18 @@ async function triggerSyncForStore(storeId, fullSync = false) {
   openSyncModal(isFullSync ? 'Volledige sync gestart...' : 'Bestellingen ophalen...');
 
   let totalOrders = 0;
-
   const updateStatus = (msg) => {
     document.getElementById('syncModalText').textContent = msg + ` (${totalOrders} verwerkt)`;
   };
 
   try {
-    // STAP 1: Haal alle huidige orders op via paginering
-    let page = 1;
-    let hasMore = true;
+    // STAP 1: Open orders ophalen
+    let page = 1, hasMore = true;
     while (hasMore) {
-      updateStatus(`Bestellingen ophalen — pagina ${page}`);
+      updateStatus(`Open bestellingen — pagina ${page}`);
       const res = await fetch(`${API}/api/sync/bol`, {
         method: 'POST', headers: getAuthHeaders(),
-        body: JSON.stringify({ storeId, mode: 'page', page })
+        body: JSON.stringify({ storeId, mode: 'orders', page })
       });
       const data = await res.json();
       if (!res.ok) { showSyncError(data.error, data.detail); return; }
@@ -500,25 +498,20 @@ async function triggerSyncForStore(storeId, fullSync = false) {
       page = data.nextPage || page + 1;
     }
 
-    // STAP 2: Volledige sync — haal historische shipped orders op via latest-change-date
+    // STAP 2: Volledige sync — historische shipments ophalen
     if (isFullSync) {
-      // Genereer lijst van datums: gisteren tot 90 dagen geleden
-      const dates = [];
-      for (let d = 1; d <= 90; d++) {
-        const dt = new Date();
-        dt.setDate(dt.getDate() - d);
-        dates.push(dt.toISOString().split('T')[0]);
-      }
-
-      for (let i = 0; i < dates.length; i++) {
-        const date = dates[i];
-        updateStatus(`Historische data: ${date} (dag ${i+1}/90)`);
+      page = 1; hasMore = true;
+      while (hasMore) {
+        updateStatus(`Historische verzendingen — pagina ${page}`);
         const res = await fetch(`${API}/api/sync/bol`, {
           method: 'POST', headers: getAuthHeaders(),
-          body: JSON.stringify({ storeId, mode: 'date', date })
+          body: JSON.stringify({ storeId, mode: 'shipments', page })
         });
         const data = await res.json();
-        if (res.ok) totalOrders += data.ordersNew || 0;
+        if (!res.ok) { showSyncError(data.error, data.detail); return; }
+        totalOrders += data.ordersNew || 0;
+        hasMore = data.hasMore === true;
+        page = data.nextPage || page + 1;
       }
     }
 
@@ -541,12 +534,13 @@ async function triggerSyncForStore(storeId, fullSync = false) {
   }
 }
 
-function showSyncError(msg, detail = '') {
+function showSyncError(msg, detail) {
   document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">${msg}${detail ? '<br><small>' + detail + '</small>' : ''}</div>`;
   document.getElementById('syncResult').style.display = 'block';
   document.getElementById('syncCloseBtn').style.display = 'inline-flex';
   document.getElementById('syncModalText').textContent = 'Sync mislukt';
 }
+
 
 // ═══════════════════════════════════════════════════════════
 // DASHBOARD

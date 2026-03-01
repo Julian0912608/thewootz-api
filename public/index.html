@@ -648,6 +648,7 @@ textarea { resize: vertical; min-height: 100px; }
   .topbar-actions .btn:not(.btn-primary) { display: none; }
 }
 </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -858,75 +859,105 @@ textarea { resize: vertical; min-height: 100px; }
 
         <!-- Content -->
         <div id="dashboardContent" style="display:none;" class="fade-in">
+
+          <!-- KPI vergelijking toggle -->
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;">
+            <span style="font-size:0.78rem;color:var(--muted-fg);">Vergelijk met:</span>
+            <div style="display:flex;gap:0.4rem;">
+              <button class="btn btn-sm btn-primary"  id="cmpBtn0" onclick="setCompare(0)">Vorige periode</button>
+              <button class="btn btn-sm btn-ghost"    id="cmpBtn1" onclick="setCompare(1)">Vorig jaar</button>
+              <button class="btn btn-sm btn-ghost"    id="cmpBtn2" onclick="setCompare(2)">Geen</button>
+            </div>
+            <span style="font-size:0.7rem;color:var(--muted-fg);margin-left:auto;" id="cmpLabel"></span>
+          </div>
+
           <!-- KPIs -->
           <div class="kpi-grid">
             <div class="kpi-card">
-              <div class="kpi-top">
-                <div class="kpi-icon">💶</div>
-                <span class="kpi-badge" id="kpiBadge1">—</span>
-              </div>
+              <div class="kpi-top"><div class="kpi-icon">💶</div><span class="kpi-badge" id="kpiBadge1">—</span></div>
               <div class="kpi-value" id="kpiOmzet">€0</div>
-              <div class="kpi-label">Totale omzet</div>
+              <div class="kpi-label">Totale omzet <span style="font-size:0.65rem;color:var(--muted-fg);">excl. BTW</span></div>
               <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;" id="kpiPeriode"></div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-top">
-                <div class="kpi-icon">🛒</div>
-                <span class="kpi-badge" id="kpiBadge2">—</span>
-              </div>
+              <div class="kpi-top"><div class="kpi-icon">🛒</div><span class="kpi-badge" id="kpiBadge2">—</span></div>
               <div class="kpi-value" id="kpiBestellingen">0</div>
               <div class="kpi-label">Bestellingen</div>
               <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">in de geselecteerde periode</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-top">
-                <div class="kpi-icon">📦</div>
-                <span class="kpi-badge" id="kpiBadge3">—</span>
-              </div>
+              <div class="kpi-top"><div class="kpi-icon">📦</div><span class="kpi-badge" id="kpiBadge3">—</span></div>
               <div class="kpi-value" id="kpiGem">€0</div>
               <div class="kpi-label">Gem. orderwaarde</div>
               <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">per bestelling</div>
             </div>
             <div class="kpi-card">
-              <div class="kpi-top">
-                <div class="kpi-icon">📈</div>
-                <span class="kpi-badge" id="kpiBadge4">—</span>
-              </div>
+              <div class="kpi-top"><div class="kpi-icon">📈</div><span class="kpi-badge" id="kpiBadge4">—</span></div>
               <div class="kpi-value" id="kpiPerDag">€0</div>
               <div class="kpi-label">Gem. per actieve dag</div>
               <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">dagelijkse omzet</div>
             </div>
           </div>
 
-          <!-- Charts + top products -->
+          <!-- Omzet lijngrafieken -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+              <div class="card-title" style="margin:0;">📈 Omzet per dag</div>
+              <div style="display:flex;gap:0.5rem;align-items:center;">
+                <span style="font-size:0.7rem;color:var(--primary);">— Huidige periode</span>
+                <span style="font-size:0.7rem;color:hsl(210,70%,60%);" id="cmpLegend" >— Vorige periode</span>
+              </div>
+            </div>
+            <div style="position:relative;height:220px;">
+              <canvas id="omzetLineChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Top producten + Zoekpositie -->
           <div class="grid-2">
             <div class="card">
               <div class="card-title">🏆 Top producten</div>
               <div id="topProductenTable"></div>
             </div>
             <div class="card">
-              <div class="card-title">💡 Conversie tips</div>
-              <div id="conversieTips"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+                <div class="card-title" style="margin:0;">🔍 Zoekpositie tracker</div>
+              </div>
+              <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+                <input type="text" id="zoekEan" placeholder="EAN of zoekterm..." style="flex:1;padding:0.45rem 0.75rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.82rem;background:var(--input);color:var(--fg);">
+                <button class="btn btn-primary btn-sm" onclick="checkZoekpositie()">Zoek</button>
+              </div>
+              <div id="zoekpositieResult"></div>
+              <div id="zoekpositieHistory" style="margin-top:0.75rem;"></div>
             </div>
           </div>
 
-          <!-- Omzet chart -->
+          <!-- Product omzet grafiek -->
           <div class="card">
-            <div class="card-title">📈 Omzet per dag</div>
-            <div class="chart-wrap" id="omzetChart"></div>
+            <div class="card-title">📊 Omzet per product</div>
+            <div style="position:relative;height:200px;">
+              <canvas id="productChart"></canvas>
+            </div>
           </div>
 
-          <!-- Platform breakdown (voor multi-platform) -->
+          <!-- Conversie tips + Actiepunten -->
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">💡 Conversie tips</div>
+              <div id="conversieTips"></div>
+            </div>
+            <div class="card" style="background:linear-gradient(135deg,hsl(25,95%,98%),hsl(25,95%,96%));border-color:hsl(25,95%,85%);">
+              <div class="card-title">🎯 Actiepunten</div>
+              <div id="actiepunten"></div>
+            </div>
+          </div>
+
+          <!-- Platform breakdown -->
           <div class="card" id="platformCard" style="display:none;">
             <div class="card-title">🌐 Omzet per platform</div>
             <div id="platformBreakdown"></div>
           </div>
 
-          <!-- Actiepunten -->
-          <div class="card" id="actiepuntenCard" style="display:none;background:linear-gradient(135deg,hsl(25,95%,98%),hsl(25,95%,96%));border-color:hsl(25,95%,85%);">
-            <div class="card-title">🎯 Concrete actiepunten</div>
-            <div id="actiepunten" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;"></div>
-          </div>
         </div>
       </div>
 

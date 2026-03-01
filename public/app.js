@@ -279,6 +279,63 @@ async function loadStores() {
   } catch (e) { console.error('loadStores:', e); }
 }
 
+
+// ── Stores pagina tabs ────────────────────────────────────
+function switchStoreTab(tab) {
+  ['retailer','ads'].forEach(t => {
+    document.getElementById('storeTab-' + t).style.display     = t === tab ? 'block' : 'none';
+    document.getElementById('storeTabBtn-' + t).className = t === tab ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  });
+  if (tab === 'ads') refreshAdsStoreSelect();
+}
+
+function refreshAdsStoreSelect() {
+  const sel = document.getElementById('adsStoreSelect');
+  if (!sel) return;
+  const bolStores = currentStores.filter(s => s.platform === 'bol');
+  sel.innerHTML = '<option value="">— Selecteer winkel —</option>' +
+    bolStores.map(s => `<option value="${s.id}">${s.name}${s.ads_client_id_enc ? ' ✓ Ads gekoppeld' : ''}</option>`).join('');
+  if (bolStores.length === 1) sel.value = bolStores[0].id;
+}
+
+async function saveAdsFromPage() {
+  const storeId         = document.getElementById('adsStoreSelect').value;
+  const adsClientId     = document.getElementById('adsPageClientId').value.trim();
+  const adsClientSecret = document.getElementById('adsPageClientSecret').value.trim();
+  const errEl           = document.getElementById('adsPageError');
+  const btn             = document.getElementById('adsPageSaveBtn');
+
+  errEl.style.display = 'none';
+  if (!storeId)         { errEl.textContent = 'Selecteer eerst een winkel'; errEl.style.display = 'block'; return; }
+  if (!adsClientId || !adsClientSecret) { errEl.textContent = 'Vul Client ID en Secret in'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true; btn.textContent = '⏳ Verifiëren...';
+
+  try {
+    const res  = await fetch(`${API}/api/sync/bol-ads`, {
+      method: 'POST', headers: getAuthHeaders(),
+      body: JSON.stringify({ storeId, adsClientId, adsClientSecret })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Koppelen mislukt';
+      errEl.style.display = 'block'; return;
+    }
+
+    document.getElementById('adsPageClientId').value     = '';
+    document.getElementById('adsPageClientSecret').value = '';
+    await loadStores();
+    refreshAdsStoreSelect();
+    showToast('✓ Advertising API succesvol gekoppeld!', 'success');
+
+  } catch(e) {
+    errEl.textContent = 'Fout: ' + e.message; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '📊 Advertising API koppelen';
+  }
+}
+
 function renderStoreList() {
   const el = document.getElementById('storeList');
   if (!currentStores.length) {
@@ -306,8 +363,8 @@ function renderStoreList() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           Sync
         </button>
-        ${s.platform === 'bol' && !s.ads_client_id_enc ? `<button class="btn btn-ghost btn-sm" style="color:var(--primary);" onclick="openAdsModal('${s.id}')">📊 Ads koppelen</button>` : ''}
-        ${s.platform === 'bol' && s.ads_client_id_enc ? `<span style="font-size:0.7rem;color:var(--success);padding:0.2rem 0.4rem;">✓ Ads</span>` : ''}
+        ${s.platform === 'bol' && !s.ads_client_id_enc ? `<button class="btn btn-ghost btn-sm" style="font-size:0.72rem;" onclick="switchStoreTab('ads')">📊 + Ads</button>` : ''}
+        ${s.platform === 'bol' && s.ads_client_id_enc ? `<span style="font-size:0.7rem;color:var(--success);font-weight:600;padding:0.2rem 0.4rem;border:1px solid var(--success);border-radius:999px;">✓ Ads</span>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteStore('${s.id}')">✕</button>
       </div>
     </div>`;

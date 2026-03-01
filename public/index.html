@@ -971,61 +971,82 @@ textarea { resize: vertical; min-height: 100px; }
 
           <!-- Add store -->
           <div>
-            <div class="card">
-              <div class="card-title">➕ Winkel koppelen</div>
 
-              <!-- Platform selector -->
-              <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
-                <button class="btn btn-primary btn-sm" id="platformBtn-bol"    onclick="selectPlatform('bol')">🏪 Bol.com</button>
-                <button class="btn btn-ghost btn-sm"  id="platformBtn-etsy"   onclick="selectPlatform('etsy')">🎨 Etsy</button>
-                <button class="btn btn-ghost btn-sm"  id="platformBtn-amazon" onclick="selectPlatform('amazon')">📦 Amazon</button>
+            <!-- Tab selector -->
+            <div style="display:flex;gap:0.4rem;margin-bottom:1rem;">
+              <button class="btn btn-primary btn-sm" id="storeTabBtn-retailer" onclick="switchStoreTab('retailer')">🏪 Retailer API</button>
+              <button class="btn btn-ghost btn-sm"   id="storeTabBtn-ads"      onclick="switchStoreTab('ads')">📊 Advertising API</button>
+            </div>
+
+            <!-- ══ RETAILER API ══ -->
+            <div id="storeTab-retailer">
+              <div class="card">
+                <div class="card-title">🏪 Retailer API koppelen</div>
+                <p style="font-size:0.8rem;color:var(--muted-fg);margin-bottom:1rem;">Voor bestellingen, voorraad en omzet. Vereist voor het Sales Dashboard.</p>
+
+                <!-- Platform selector -->
+                <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+                  <button class="btn btn-primary btn-sm" id="platformBtn-bol"    onclick="selectPlatform('bol')">🏪 Bol.com</button>
+                  <button class="btn btn-ghost btn-sm"  id="platformBtn-etsy"   onclick="selectPlatform('etsy')">🎨 Etsy</button>
+                  <button class="btn btn-ghost btn-sm"  id="platformBtn-amazon" onclick="selectPlatform('amazon')">📦 Amazon</button>
+                </div>
+
+                <div id="bolConnectForm">
+                  <div class="form-row">
+                    <label>Winkelnaam</label>
+                    <input type="text" id="storeName" placeholder="Bijv: TheWootz NL">
+                  </div>
+                  <div class="form-row">
+                    <label>Client ID</label>
+                    <input type="text" id="storeClientId" placeholder="Jouw bol.com Client ID" autocomplete="off">
+                  </div>
+                  <div class="form-row">
+                    <label>Client Secret</label>
+                    <input type="password" id="storeClientSecret" placeholder="Jouw bol.com Client Secret" autocomplete="off">
+                  </div>
+                  <div class="alert alert-info" style="font-size:0.75rem;margin-bottom:1rem;">
+                    📍 Via: <strong>Bol.com Partnerplatform → Instellingen → API → Mijn applicaties</strong>
+                  </div>
+                  <div id="addStoreError" class="alert alert-danger" style="display:none;"></div>
+                  <button class="btn btn-primary" style="width:100%;" id="addStoreBtn" onclick="addStore()">
+                    🔗 Koppelen &amp; valideren
+                  </button>
+                </div>
+
+                <div id="oauthConnectForm" style="display:none;">
+                  <div id="oauthPlatformInfo"></div>
+                </div>
               </div>
+            </div>
 
-              <!-- Bol.com form -->
-              <div id="bolConnectForm">
-                <div class="form-row">
-                  <label>Winkelnaam</label>
-                  <input type="text" id="storeName" placeholder="Bijv: TheWootz NL">
-                </div>
-                <div class="form-row">
-                  <label>Client ID</label>
-                  <input type="text" id="storeClientId" placeholder="Jouw bol.com Client ID" autocomplete="off">
-                </div>
-                <div class="form-row">
-                  <label>Client Secret</label>
-                  <input type="password" id="storeClientSecret" placeholder="Jouw bol.com Client Secret" autocomplete="off">
-                </div>
-                <div class="alert alert-info" style="font-size:0.75rem;">
-                  📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
-                </div>
+            <!-- ══ ADVERTISING API ══ -->
+            <div id="storeTab-ads" style="display:none;">
+              <div class="card">
+                <div class="card-title">📊 Advertising API koppelen</div>
+                <p style="font-size:0.8rem;color:var(--muted-fg);margin-bottom:1rem;">Voor advertentiedata: uitgaven, ROAS, conversies. Vereist voor de Advertentie Analyse.</p>
 
-                <!-- Advertising API (optioneel) -->
-                <div style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem;">
-                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
-                    <span style="font-weight:600;font-size:0.82rem;">📊 Advertising API <span style="color:var(--muted-fg);font-weight:400;">(optioneel)</span></span>
-                  </div>
-                  <div class="form-row">
-                    <label>Ads Client ID</label>
-                    <input type="text" id="adsClientId" placeholder="Advertising Client ID" autocomplete="off">
-                  </div>
-                  <div class="form-row">
-                    <label>Ads Client Secret</label>
-                    <input type="password" id="adsClientSecret" placeholder="Advertising Client Secret" autocomplete="off">
-                  </div>
-                  <div class="alert alert-orange" style="font-size:0.73rem;">
-                    📍 Aparte API key via: <strong>Partnerplatform → Adverteren → API toegang</strong>
-                  </div>
+                <div id="adsStoreSelector" style="margin-bottom:1rem;">
+                  <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.4rem;">Koppel aan winkel</label>
+                  <select id="adsStoreSelect" class="form-input" style="font-size:0.82rem;">
+                    <option value="">— Selecteer winkel —</option>
+                  </select>
                 </div>
-
-                <div id="addStoreError" class="alert alert-danger" style="display:none;"></div>
-                <button class="btn btn-primary" style="width:100%;" id="addStoreBtn" onclick="addStore()">
-                  🔗 Winkel koppelen &amp; valideren
+                <div class="form-row">
+                  <label>Ads Client ID</label>
+                  <input type="text" id="adsPageClientId" placeholder="Advertising Client ID" autocomplete="off">
+                </div>
+                <div class="form-row">
+                  <label>Ads Client Secret</label>
+                  <input type="password" id="adsPageClientSecret" placeholder="Advertising Client Secret" autocomplete="off">
+                </div>
+                <div class="alert alert-orange" style="font-size:0.75rem;margin-bottom:1rem;">
+                  📍 Via: <strong>Partnerplatform → Adverteren → Instellingen → API toegang</strong><br>
+                  <span style="color:var(--muted-fg);">Let op: dit is een aparte API key met de "Adverteren" scope.</span>
+                </div>
+                <div id="adsPageError" class="alert alert-danger" style="display:none;"></div>
+                <button class="btn btn-primary" style="width:100%;" id="adsPageSaveBtn" onclick="saveAdsFromPage()">
+                  📊 Advertising API koppelen
                 </button>
-              </div>
-
-              <!-- OAuth form (Etsy / Amazon) -->
-              <div id="oauthConnectForm" style="display:none;">
-                <div id="oauthPlatformInfo"></div>
               </div>
             </div>
 

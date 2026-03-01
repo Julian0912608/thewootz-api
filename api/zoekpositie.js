@@ -1,5 +1,5 @@
-// api/zoekpositie.js — Zoekpositie via bol.com retailer API
-// Gebruikt /products endpoint om EAN op te zoeken en positie te bepalen
+// api/zoekpositie.js — Aanbiedingen checker via bol.com retailer API
+// Haalt jouw eigen actieve aanbiedingen op en toont prijs + voorraad + status
 
 import { setCors, getSupabase, getUser } from './_lib/supabase.js';
 
@@ -17,13 +17,10 @@ export default async function handler(req, res) {
   if (!term) return res.status(400).json({ error: 'term parameter verplicht' });
 
   const supabase = getSupabase();
-
-  // Haal store op (eerste actieve bol.com store)
   const query = supabase.from('stores').select('*').eq('user_id', user.id).eq('platform', 'bol').eq('is_active', true);
-  const { data: stores } = storeId ? await query.eq('id', storeId) : await query.limit(1);
+  const { data: stores } = storeId ? await query.eq('id', storeId).limit(1) : await query.limit(1);
   const store = stores?.[0];
-
-  if (!store) return res.status(404).json({ error: 'Geen bol.com winkel gevonden. Koppel eerst een winkel.' });
+  if (!store) return res.status(404).json({ error: 'Geen bol.com winkel gevonden.' });
 
   const clientId     = Buffer.from(store.client_id_enc,     'base64').toString('utf8');
   const clientSecret = Buffer.from(store.client_secret_enc, 'base64').toString('utf8');
@@ -35,98 +32,77 @@ export default async function handler(req, res) {
     'Accept': 'application/vnd.retailer.v10+json'
   };
 
+  // Haal alle eigen aanbiedingen op en filter op EAN of titel
   const isEan = /^\d{8,14}$/.test(term.replace(/\s/g, ''));
 
-  if (isEan) {
-    // EAN → zoek via products endpoint
-    const ean = term.replace(/\s/g, '');
-    const r = await fetch(`${BASE}/products/${ean}`, { headers });
+  // Zoek via offers endpoint
+  let url = `${BASE}/offers?status=ACTIVE&limit=50`;
+  if (isEan) url += `&ean=${term.replace(/\s/g, '')}`;
 
-    if (!r.ok) {
-      return res.status(200).json({
-        positie: null,
-        ean,
-        error: r.status === 404 ? `EAN ${ean} niet gevonden in bol.com catalogus.` : `Bol.com API fout (${r.status})`,
-        tip: 'Controleer of het EAN juist is en het product op bol.com staat.'
-      });
-    }
-
-    const product = await r.json();
-
-    // Zoek rankings op
-    const rankR = await fetch(`${BASE}/products/${ean}/assets?usage=MAIN`, { headers });
-    const rankData = rankR.ok ? await rankR.json() : null;
-
-    // Haal bestverkoperlijst op voor categorie vergelijking
-    const offerR = await fetch(`${BASE}/offers?ean=${ean}`, { headers });
-    const offerData = offerR.ok ? await offerR.json() : null;
-    const offers = offerData?.offers || [];
-    const eigenOffer = offers.find(o => o.mine === true);
-
-    return res.status(200).json({
-      ean,
-      titel: product.title || product.productTitle || `Product ${ean}`,
-      positie: eigenOffer?.ranking || null,
-      aantalAanbieders: offers.length,
-      eigenPrijs: eigenOffer?.pricing?.bundlePrices?.[0]?.price || eigenOffer?.price || null,
-      laagstePrijs: offers[0]?.pricing?.bundlePrices?.[0]?.price || null,
-      product: {
-        categorie: product.mainCategory || product.category,
-        rating: product.rating,
-        reviewCount: product.reviewCount
-      },
-      tip: eigenOffer
-        ? `Jouw aanbod staat op positie ${eigenOffer.ranking || '?'} van ${offers.length} aanbieders.`
-        : `Product gevonden maar geen eigen aanbod actief voor EAN ${ean}.`
-    });
-  }
-
-  // Zoekterm → gebruik offers zoek
-  const r = await fetch(`${BASE}/offers?search=${encodeURIComponent(term)}&limit=10`, { headers });
+  const r = await fetch(url, { headers });
 
   if (!r.ok) {
-    // Fallback: zoek via product catalogus
-    const catR = await fetch(`${BASE}/products?search=${encodeURIComponent(term)}&limit=5`, { headers });
-    if (!catR.ok) {
-      return res.status(200).json({
-        positie: null,
-        term,
-        error: 'Zoekterm niet gevonden via bol.com API.',
-        tip: 'Gebruik een EAN (barcode) voor nauwkeurigere resultaten.'
-      });
-    }
-    const catData = await catR.json();
-    const producten = catData.products || catData.items || [];
+    const err = await r.text();
     return res.status(200).json({
-      term,
-      positie: null,
-      resultaten: producten.slice(0, 5).map((p, i) => ({
-        positie: i + 1,
-        ean: p.ean,
-        titel: p.title || p.productTitle,
-        tip: `Gebruik EAN ${p.ean} voor exacte positiebepaling`
-      })),
-      tip: 'Zoekterm gevonden. Gebruik het EAN voor exacte rangschikking.'
+      positie: null, term,
+      error: `Bol.com API fout (${r.status})`,
+      detail: err.substring(0, 200)
     });
   }
 
   const data   = await r.json();
   const offers = data.offers || [];
-  const eigen  = offers.find(o => o.mine === true);
-  const positie = eigen ? offers.indexOf(eigen) + 1 : null;
 
+  // Filter op zoekterm als het geen EAN is
+  const filtered = isEan
+    ? offers
+    : offers.filter(o =>
+        o.ean?.includes(term) ||
+        o.reference?.toLowerCase().includes(term.toLowerCase())
+      );
+
+  if (!filtered.length) {
+    // Probeer via order_items in onze database te zoeken
+    const { data: items } = await supabase
+      .from('order_items')
+      .select('product_title, product_ean, quantity, unit_price')
+      .eq('user_id', user.id)
+      .ilike('product_ean', `%${term}%`)
+      .limit(5);
+
+    if (items?.length) {
+      const item = items[0];
+      return res.status(200).json({
+        ean: item.product_ean,
+        titel: item.product_title,
+        positie: null,
+        bron: 'database',
+        verkochtStuks: items.reduce((s,i) => s + i.quantity, 0),
+        tip: `EAN ${item.product_ean} gevonden in verkoophistorie. Dit product heeft ${items.reduce((s,i) => s + i.quantity, 0)} stuks verkocht. Zoekpositie is niet beschikbaar via de API.`
+      });
+    }
+
+    return res.status(200).json({
+      positie: null, term,
+      melding: isEan
+        ? `EAN ${term} heeft geen actief aanbod in jouw winkel.`
+        : `Geen actief aanbod gevonden voor "${term}".`,
+      tip: 'Controleer of het product actief staat in je bol.com verkopersportaal.'
+    });
+  }
+
+  // Geef aanbod info terug
+  const offer = filtered[0];
   return res.status(200).json({
-    term,
-    positie,
-    aantalResultaten: offers.length,
-    eigenAanbod: eigen ? {
-      ean: eigen.ean,
-      prijs: eigen.pricing?.bundlePrices?.[0]?.price,
-      ranking: eigen.ranking
-    } : null,
-    tip: eigen
-      ? `Jouw product staat op positie ${positie} voor "${term}".`
-      : `Geen eigen aanbod gevonden voor "${term}". Gebruik een EAN voor exacte resultaten.`
+    ean: offer.ean,
+    titel: offer.reference || offer.ean,
+    positie: null, // niet beschikbaar via retailer API
+    prijs: offer.pricing?.bundlePrices?.[0]?.price || null,
+    voorraad: offer.stock?.amount || 0,
+    status: offer.status || 'ACTIVE',
+    fulfillment: offer.fulfilment?.method || 'FBR',
+    aantalGevonden: filtered.length,
+    tip: `Aanbod actief voor EAN ${offer.ean}. Prijs: €${offer.pricing?.bundlePrices?.[0]?.price || '?'}. Voorraad: ${offer.stock?.amount || 0} stuks.\n\n⚠️ Zoekpositie (rang in zoekresultaten) is niet beschikbaar via de bol.com API — bekijk dit in je Partnerplatform onder "Zichtbaarheid".`
   });
 }
 

@@ -1,10 +1,9 @@
 {
-  "name": "thewootz-bol-api",
-  "version": "1.0.0",
-  "description": "TheWootz bol.com Advertising API proxy for Vercel",
+  "name": "thewootz-api",
+  "version": "2.0.0",
   "private": true,
   "dependencies": {
-    "node-fetch": "^3.3.2"
+    "@supabase/supabase-js": "^2.45.0"
   },
   "engines": {
     "node": "22.x"

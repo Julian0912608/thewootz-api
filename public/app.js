@@ -1260,67 +1260,83 @@ async function loadAdsData() {
   const btn = document.getElementById('loadAdsBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Laden...'; }
 
-  const start = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
-  const end   = document.getElementById('endDate')?.value   || new Date().toISOString().split('T')[0];
+  const start   = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+  const end     = document.getElementById('endDate')?.value   || new Date().toISOString().split('T')[0];
   const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
 
   try {
     const res  = await fetch(`${API}/api/sync/bol-ads?storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
     const data = await res.json();
 
-    if (!res.ok || data.error === 'no_ads_credentials') {
-      // Geen credentials — toon instructie
+    if (data.error === 'no_ads_credentials') {
       const hint = document.getElementById('adsConnectHint');
-      if (hint) hint.innerHTML = '⚠️ Geen Advertising API gekoppeld. Ga naar <strong>Mijn Winkels</strong> en voeg je Advertising credentials toe.';
+      if (hint) hint.innerHTML = '⚠️ Geen Advertising API gekoppeld. Ga naar <strong>Mijn Winkels → 📊 Advertising API</strong>.';
       document.getElementById('analyseEmpty').style.display = 'block';
       showToast('Koppel eerst de Advertising API via Mijn Winkels', 'warning');
       return;
     }
+    if (!res.ok) { showToast(data.error || 'Laden mislukt', 'error'); return; }
 
-    if (!res.ok) {
-      showToast(data.error || 'Laden mislukt', 'error');
-      return;
-    }
+    const t = data.totals || {};
 
-    // Converteer API data naar analyzeData formaat
-    const products = data.products || [];
-    if (!products.length && !(data.performance?.length)) {
-      showToast('Geen advertentiedata gevonden voor deze periode', 'warning');
-      return;
-    }
+    // De API geeft totalen terug — zet om naar 1 rij voor analyzeData
+    // Maar toon ook de rijke advertentie-KPIs direct
+    renderAdsKpis(t, data.periode);
 
-    // Map API response naar rijen die analyzeData begrijpt
-    const rows = products.map(p => ({
-      'Productnaam':           p.title || p.ean || p.productId || 'Onbekend',
-      'Advertentie-uitgaven':  String(p.spend || p.cost || 0),
-      'Vertoningen':           String(p.impressions || 0),
-      'Klikken':               String(p.clicks || 0),
-      'Bestellingen':          String(p.orders || p.conversions || 0),
-      'Omzet':                 String(p.revenue || 0)
-    }));
-
-    // Als geen product-level data, gebruik campagne-level
-    if (!rows.length && data.performance?.length) {
-      data.performance.forEach(c => {
-        rows.push({
-          'Productnaam':           c.campaignName || c.name || 'Campagne',
-          'Advertentie-uitgaven':  String(c.spend || c.cost || 0),
-          'Vertoningen':           String(c.impressions || 0),
-          'Klikken':               String(c.clicks || 0),
-          'Bestellingen':          String(c.orders || c.conversions || 0),
-          'Omzet':                 String(c.revenue || 0)
-        });
-      });
-    }
+    // Maak 1 samenvatting-rij voor de analyzeData functie (tabel + tips)
+    const rows = [{
+      'Productnaam':          'Totaal account',
+      'Advertentie-uitgaven': String(t.cost     || 0),
+      'Vertoningen':          String(t.impressions || 0),
+      'Klikken':              String(t.clicks   || 0),
+      'Bestellingen':         String(t.conversions || 0),
+      'Omzet':                String(t.sales    || 0)
+    }];
 
     analyzeData(rows);
-    showToast(`Live data geladen: ${rows.length} producten/campagnes`, 'success');
+    showToast(`✓ Live ads data geladen (${data.periode?.start} → ${data.periode?.end})`, 'success');
 
   } catch(e) {
     showToast('Fout: ' + e.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '⚡ Live data'; }
   }
+}
+
+function renderAdsKpis(t, periode) {
+  const fmt    = n => '€' + (n||0).toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const fmtPct = n => ((n||0)*100).toFixed(2) + '%';
+  const roas   = t.roas || 0;
+  const roasKleur = roas >= 2 ? 'var(--success)' : roas >= 1 ? 'var(--warning)' : 'var(--danger)';
+  const acos   = t.acos || 0;
+
+  // Vervang kpiGrid met advertentie-specifieke KPIs
+  document.getElementById('kpiGrid').innerHTML = `<div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">💰</div><span class="kpi-badge">Live</span></div>
+      <div class="kpi-value">${fmt(t.cost)}</div>
+      <div class="kpi-label">Totale uitgaven</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">→ ${fmt(t.sales)} omzet</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">📈</div><span class="kpi-badge" style="color:${roasKleur};">${roas>=2?'✓ Goed':roas>=1?'⚠ Laag':'✗ Verlies'}</span></div>
+      <div class="kpi-value" style="color:${roasKleur};">${roas.toFixed(2)}x</div>
+      <div class="kpi-label">ROAS</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">ACoS: ${fmtPct(acos)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">🖱️</div></div>
+      <div class="kpi-value">${fmt(t.averageCpc)}</div>
+      <div class="kpi-label">Gem. CPC</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">CTR: ${fmtPct(t.ctr)} · ${(t.clicks||0).toLocaleString('nl-NL')} klikken</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-top"><div class="kpi-icon">🎯</div></div>
+      <div class="kpi-value">${fmtPct(t.conversionRate)}</div>
+      <div class="kpi-label">Conversiepercentage</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">${t.conversions||0} conv · ${(t.impressions||0).toLocaleString('nl-NL')} vertoningen</div>
+    </div>
+  </div>`;
 }
 
 

@@ -65,6 +65,26 @@ export default async function handler(req, res) {
       'Content-Type':  'application/vnd.advertiser.v11+json'
     };
 
+    // ── Stap 0: Test met advertiser-info endpoint ────────────
+    // Probeer eerst het eenvoudigste endpoint om te zien of token werkt
+    const infoR = await fetch('https://api.bol.com/advertiser/account', { method: 'GET', headers });
+    const infoR2 = await fetch('https://api.bol.com/advertiser/advertisers', { method: 'GET', headers });
+
+    // Debug: probeer ook de reporting endpoint direct (geen campagne ID nodig)
+    const reportR = await fetch(
+      `https://api.bol.com/advertiser/sponsored-products/reporting/performance/advertiser?period-start-date=${start}&period-end-date=${end}`,
+      { method: 'GET', headers }
+    );
+
+    // Als debug mode, return alle resultaten
+    if (req.query.debug === '1') {
+      return res.status(200).json({
+        account:   { status: infoR.status,   body: infoR.ok   ? await infoR.json()   : await infoR.text()   },
+        advertisers: { status: infoR2.status, body: infoR2.ok ? await infoR2.json()  : await infoR2.text()  },
+        reporting: { status: reportR.status, body: reportR.ok ? await reportR.json() : await reportR.text() },
+      });
+    }
+
     // ── Stap 1: Haal campagnes op (PUT filter endpoint in v11) ─
     const campR = await fetch(`${ADS_BASE}/campaigns`, {
       method: 'PUT',

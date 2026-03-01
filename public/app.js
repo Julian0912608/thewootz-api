@@ -230,6 +230,16 @@ async function enterApp() {
 
 function switchTab(tab) {
   if (tab === 'analyse') initAnalyse();
+  // Verberg periode selector op tabs waar het niet relevant is
+  const hidePeriod = ['analyse', 'scorer', 'generator', 'concurrent', 'stores', 'settings'];
+  const periodGroup = document.querySelector('.period-group');
+  const syncBtn     = document.getElementById('syncBtn');
+  const refreshBtn  = document.getElementById('refreshBtn');
+  const livePill    = document.getElementById('livePill');
+  if (periodGroup) periodGroup.style.display = hidePeriod.includes(tab) ? 'none' : '';
+  if (syncBtn)     syncBtn.style.display     = hidePeriod.includes(tab) ? 'none' : '';
+  if (refreshBtn)  refreshBtn.style.display  = hidePeriod.includes(tab) ? 'none' : '';
+  if (livePill)    livePill.style.display    = hidePeriod.includes(tab) ? 'none' : '';
   document.querySelectorAll('#sideNav .nav-item').forEach(i => i.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   const navItem = document.querySelector(`[data-tab="${tab}"]`);

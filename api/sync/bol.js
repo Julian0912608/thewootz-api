@@ -1,5 +1,5 @@
-// api/sync/bol.js — Bol.com sync (timeout-proof versie)
-// Haalt orders op per pagina (max 50), parallel details ophalen in batches van 5
+// api/sync/bol.js — Bol.com sync met latest-change-date (week-voor-week)
+// Elke call verwerkt 1 week. Frontend roept meerdere keren aan.
 
 import { setCors, getSupabase, getUser } from '../_lib/supabase.js';
 
@@ -13,119 +13,158 @@ export default async function handler(req, res) {
   const user = await getUser(req);
   if (!user) return res.status(401).json({ error: 'Niet ingelogd' });
 
-  const { storeId, fullSync, page = 1 } = req.body || {};
+  const { storeId, fullSync, weekOffset = 0 } = req.body || {};
   if (!storeId) return res.status(400).json({ error: 'storeId verplicht' });
 
   const supabase = getSupabase();
 
-  const { data: store, error: storeErr } = await supabase
+  const { data: store } = await supabase
     .from('stores').select('*').eq('id', storeId).eq('user_id', user.id).single();
 
-  if (storeErr || !store) return res.status(404).json({ error: 'Store niet gevonden' });
+  if (!store) return res.status(404).json({ error: 'Store niet gevonden' });
   if (store.platform !== 'bol') return res.status(400).json({ error: 'Alleen bol.com stores' });
 
   const clientId     = Buffer.from(store.client_id_enc,     'base64').toString('utf8');
   const clientSecret = Buffer.from(store.client_secret_enc, 'base64').toString('utf8');
 
   const token = await getBolToken(clientId, clientSecret);
-  if (!token) return res.status(401).json({ error: 'Bol.com authenticatie mislukt — controleer je API credentials' });
+  if (!token) return res.status(401).json({ error: 'Bol.com authenticatie mislukt' });
 
   const headers = {
     'Authorization': `Bearer ${token}`,
     'Accept': 'application/vnd.retailer.v10+json'
   };
 
-  const currentPage = parseInt(page) || 1;
-  const ordersRes = await fetch(
-    `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${currentPage}`,
-    { headers }
-  );
+  // Bepaal de week die we ophalen
+  // weekOffset=0 → deze week, weekOffset=1 → vorige week, etc.
+  const maxWeeks = fullSync ? 13 : 0; // 13 weken = ~90 dagen
+  const currentWeek = parseInt(weekOffset) || 0;
 
-  if (!ordersRes.ok) {
-    const err = await ordersRes.text();
-    return res.status(ordersRes.status).json({
-      error: `Bol.com orders ophalen mislukt (${ordersRes.status})`,
-      detail: err.substring(0, 300)
-    });
-  }
+  const endDate   = new Date();
+  endDate.setDate(endDate.getDate() - (currentWeek * 7));
+  const startDate = new Date(endDate);
+  startDate.setDate(startDate.getDate() - 6);
 
-  const ordersData = await ordersRes.json();
-  const orderSummaries = ordersData.orders || [];
+  const startStr = startDate.toISOString().split('T')[0];
+  const endStr   = endDate.toISOString().split('T')[0];
 
-  if (orderSummaries.length === 0) {
-    await supabase.from('stores').update({ last_synced_at: new Date().toISOString() }).eq('id', storeId);
-    return res.status(200).json({
-      message: 'Sync klaar! Geen nieuwe bestellingen gevonden.',
-      ordersNew: 0, hasMore: false, nextPage: null
-    });
-  }
-
-  // Details ophalen in batches van 5 parallel
+  // Haal orders op voor elke dag in deze week
   let ordersNew = 0;
   const errors = [];
-  const BATCH = 5;
 
-  for (let i = 0; i < orderSummaries.length; i += BATCH) {
-    const batch = orderSummaries.slice(i, i + BATCH);
-    const details = await Promise.all(batch.map(o => fetchOrderDetail(o.orderId, headers)));
+  // Loop dag voor dag binnen de week
+  const days = getDayRange(startDate, endDate);
 
-    for (const detail of details) {
-      if (!detail) continue;
+  for (const day of days) {
+    try {
+      const dayOrders = await fetchOrdersForDay(day, headers);
 
-      const orderDate   = (detail.orderPlacedDateTime || '').substring(0, 10) || new Date().toISOString().split('T')[0];
-      const totalAmount = calcOrderTotal(detail.orderItems || []);
+      // Haal details op in batches van 5
+      const BATCH = 5;
+      for (let i = 0; i < dayOrders.length; i += BATCH) {
+        const batch = dayOrders.slice(i, i + BATCH);
+        const details = await Promise.all(batch.map(o => fetchOrderDetail(o.orderId, headers)));
 
-      const { data: upserted, error: upsertErr } = await supabase
-        .from('orders')
-        .upsert({
-          store_id:     storeId,
-          user_id:      user.id,
-          platform:     'bol',
-          external_id:  detail.orderId,
-          order_date:   orderDate,
-          status:       getOrderStatus(detail.orderItems || []),
-          total_amount: totalAmount,
-          raw_data:     detail
-        }, { onConflict: 'store_id,external_id', ignoreDuplicates: false })
-        .select('id').single();
+        for (const detail of details) {
+          if (!detail) continue;
 
-      if (upsertErr || !upserted) { errors.push(upsertErr?.message || 'Upsert mislukt'); continue; }
+          const orderDate   = (detail.orderPlacedDateTime || day).substring(0, 10);
+          const totalAmount = calcOrderTotal(detail.orderItems || []);
 
-      const items = (detail.orderItems || []).map(item => ({
-        order_id:      upserted.id,
-        store_id:      storeId,
-        user_id:       user.id,
-        platform:      'bol',
-        product_title: item.product?.title || item.offer?.reference || 'Onbekend product',
-        product_ean:   item.product?.ean   || null,
-        quantity:      item.quantity       || 1,
-        unit_price:    item.unitPrice      || 0,
-        total_price:   item.totalPrice     || (item.unitPrice * (item.quantity || 1)) || 0
-      }));
+          const { data: upserted, error: upsertErr } = await supabase
+            .from('orders')
+            .upsert({
+              store_id:     storeId,
+              user_id:      user.id,
+              platform:     'bol',
+              external_id:  detail.orderId,
+              order_date:   orderDate,
+              status:       getOrderStatus(detail.orderItems || []),
+              total_amount: totalAmount,
+              raw_data:     detail
+            }, { onConflict: 'store_id,external_id', ignoreDuplicates: false })
+            .select('id').single();
 
-      await supabase.from('order_items').delete().eq('order_id', upserted.id);
-      if (items.length > 0) await supabase.from('order_items').insert(items);
-      ordersNew++;
+          if (upsertErr || !upserted) continue;
+
+          const items = (detail.orderItems || []).map(item => ({
+            order_id:      upserted.id,
+            store_id:      storeId,
+            user_id:       user.id,
+            platform:      'bol',
+            product_title: item.product?.title || item.offer?.reference || 'Onbekend',
+            product_ean:   item.product?.ean   || null,
+            quantity:      item.quantity       || 1,
+            unit_price:    item.unitPrice      || 0,
+            total_price:   item.totalPrice     || (item.unitPrice * (item.quantity || 1)) || 0
+          }));
+
+          await supabase.from('order_items').delete().eq('order_id', upserted.id);
+          if (items.length > 0) await supabase.from('order_items').insert(items);
+          ordersNew++;
+        }
+      }
+    } catch (e) {
+      errors.push(`${day}: ${e.message}`);
     }
   }
 
-  const hasMore = orderSummaries.length >= 50 && fullSync;
-  const nextPage = hasMore ? currentPage + 1 : null;
+  const hasMore = fullSync && currentWeek < maxWeeks;
+  const nextWeek = hasMore ? currentWeek + 1 : null;
 
   if (!hasMore) {
     await supabase.from('stores').update({ last_synced_at: new Date().toISOString() }).eq('id', storeId);
+    await supabase.from('sync_log').insert({
+      store_id: storeId, user_id: user.id, orders_new: ordersNew,
+      status: errors.length > 0 ? 'partial' : 'ok'
+    });
   }
 
-  await supabase.from('sync_log').insert({
-    store_id: storeId, user_id: user.id, orders_new: ordersNew,
-    status: errors.length > 0 ? 'partial' : 'ok',
-    error:  errors.length > 0 ? errors.slice(0, 3).join('; ') : null
-  });
-
   return res.status(200).json({
-    message: `Pagina ${currentPage}: ${ordersNew} bestellingen verwerkt.`,
-    ordersNew, hasMore, nextPage, page: currentPage
+    message: `Week ${startStr} t/m ${endStr}: ${ordersNew} bestellingen verwerkt.`,
+    ordersNew, hasMore, nextWeek,
+    weekOffset: currentWeek, period: `${startStr} → ${endStr}`
   });
+}
+
+function getDayRange(start, end) {
+  const days = [];
+  const cur = new Date(start);
+  while (cur <= end) {
+    days.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return days;
+}
+
+async function fetchOrdersForDay(date, headers) {
+  try {
+    const r = await fetch(
+      `${BASE}/orders?fulfilment-method=ALL&latest-change-date=${date}&page=1`,
+      { headers }
+    );
+    if (!r.ok) return [];
+    const d = await r.json();
+    return d.orders || [];
+  } catch { return []; }
+}
+
+async function fetchOrderDetail(orderId, headers) {
+  try {
+    const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+function calcOrderTotal(items) {
+  return items.reduce((sum, i) => sum + (i.totalPrice || (i.unitPrice * (i.quantity || 1)) || 0), 0);
+}
+
+function getOrderStatus(items) {
+  if (items.some(i => i.cancellationRequest)) return 'cancelled';
+  if (items.every(i => i.shipmentDetails?.shipmentDate)) return 'shipped';
+  return 'open';
 }
 
 async function getBolToken(clientId, clientSecret) {
@@ -139,22 +178,4 @@ async function getBolToken(clientId, clientSecret) {
     const d = await r.json();
     return d.access_token;
   } catch { return null; }
-}
-
-async function fetchOrderDetail(orderId, headers) {
-  try {
-    const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
-}
-
-function calcOrderTotal(items) {
-  return items.reduce((sum, item) => sum + (item.totalPrice || (item.unitPrice * (item.quantity || 1)) || 0), 0);
-}
-
-function getOrderStatus(items) {
-  if (items.some(i => i.cancellationRequest)) return 'cancelled';
-  if (items.every(i => i.shipmentDetails?.shipmentDate)) return 'shipped';
-  return 'open';
 }

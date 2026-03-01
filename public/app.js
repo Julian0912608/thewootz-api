@@ -475,34 +475,54 @@ async function triggerSyncForStore(storeId, fullSync = false) {
   if (!await ensureSession()) return;
 
   const isFullSync = fullSync === true;
-  openSyncModal(isFullSync 
-    ? 'Volledige sync gestart — 90 dagen bestellingen ophalen...' 
-    : 'Incrementele sync — bestellingen van afgelopen 2 dagen ophalen...'
+  openSyncModal(isFullSync
+    ? 'Volledige sync gestart — bestellingen ophalen...'
+    : 'Incrementele sync — recente bestellingen ophalen...'
   );
 
+  let totalOrders = 0;
+  let page = 1;
+  let hasMore = true;
+
   try {
-    const res = await fetch(`${API}/api/sync/bol`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ storeId, fullSync: isFullSync })
-    });
-    const data = await res.json();
+    while (hasMore) {
+      document.getElementById('syncModalText').textContent =
+        `Pagina ${page} ophalen... (${totalOrders} bestellingen verwerkt)`;
+
+      const res = await fetch(`${API}/api/sync/bol`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ storeId, fullSync: isFullSync, page })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">${data.error || 'Sync mislukt'}${data.detail ? '<br><small>' + data.detail + '</small>' : ''}</div>`;
+        document.getElementById('syncResult').style.display = 'block';
+        document.getElementById('syncCloseBtn').style.display = 'inline-flex';
+        document.getElementById('syncModalText').textContent = 'Sync mislukt';
+        return;
+      }
+
+      totalOrders += data.ordersNew || 0;
+      hasMore = data.hasMore === true;
+      page    = data.nextPage || page + 1;
+      if (!isFullSync) break;
+    }
 
     const resultEl = document.getElementById('syncResult');
     resultEl.style.display = 'block';
-    if (res.ok) {
-      resultEl.innerHTML = `<div class="alert alert-success">${data.message}<br><small>${data.daysChecked} dagen gecontroleerd · type: ${data.syncType}</small></div>`;
-      await loadStores();
-      loadDashboard();
-    } else {
-      resultEl.innerHTML = `<div class="alert alert-danger">${data.error || 'Sync mislukt'}</div>`;
-    }
+    resultEl.innerHTML = `<div class="alert alert-success">Sync voltooid! <strong>${totalOrders} bestellingen</strong> gesynchroniseerd.</div>`;
     document.getElementById('syncCloseBtn').style.display = 'inline-flex';
-    document.getElementById('syncModalText').textContent = res.ok ? '✅ Sync voltooid!' : '❌ Sync mislukt';
+    document.getElementById('syncModalText').textContent = 'Sync voltooid!';
+    await loadStores();
+    loadDashboard();
+
   } catch (e) {
     document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">Verbinding mislukt: ${e.message}</div>`;
     document.getElementById('syncResult').style.display = 'block';
     document.getElementById('syncCloseBtn').style.display = 'inline-flex';
+    document.getElementById('syncModalText').textContent = 'Sync mislukt';
   }
 }
 

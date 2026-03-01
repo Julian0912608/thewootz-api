@@ -998,6 +998,25 @@ textarea { resize: vertical; min-height: 100px; }
                 <div class="alert alert-info" style="font-size:0.75rem;">
                   📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
                 </div>
+
+                <!-- Advertising API (optioneel) -->
+                <div style="border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem;">
+                  <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.75rem;">
+                    <span style="font-weight:600;font-size:0.82rem;">📊 Advertising API <span style="color:var(--muted-fg);font-weight:400;">(optioneel)</span></span>
+                  </div>
+                  <div class="form-row">
+                    <label>Ads Client ID</label>
+                    <input type="text" id="adsClientId" placeholder="Advertising Client ID" autocomplete="off">
+                  </div>
+                  <div class="form-row">
+                    <label>Ads Client Secret</label>
+                    <input type="password" id="adsClientSecret" placeholder="Advertising Client Secret" autocomplete="off">
+                  </div>
+                  <div class="alert alert-orange" style="font-size:0.73rem;">
+                    📍 Aparte API key via: <strong>Partnerplatform → Adverteren → API toegang</strong>
+                  </div>
+                </div>
+
                 <div id="addStoreError" class="alert alert-danger" style="display:none;"></div>
                 <button class="btn btn-primary" style="width:100%;" id="addStoreBtn" onclick="addStore()">
                   🔗 Winkel koppelen &amp; valideren
@@ -1070,7 +1089,8 @@ textarea { resize: vertical; min-height: 100px; }
               <option value="">— Opgeslagen datasets —</option>
             </select>
             <button class="btn btn-ghost btn-sm" id="saveDatasetBtn" style="display:none;" onclick="saveAnalyseDataset()">💾 Opslaan</button>
-            <button class="btn btn-primary btn-sm" onclick="openUploadModal()">📤 Nieuwe data</button>
+            <button class="btn btn-ghost btn-sm" id="loadAdsBtn" onclick="loadAdsData()" title="Laad live data via Advertising API">⚡ Live data</button>
+            <button class="btn btn-primary btn-sm" onclick="openUploadModal()">📤 CSV uploaden</button>
           </div>
         </div>
 
@@ -1082,9 +1102,11 @@ textarea { resize: vertical; min-height: 100px; }
             <p style="color:var(--muted-fg);font-size:0.85rem;margin-bottom:0.5rem;">Exporteer via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV</p>
             <p style="color:var(--muted-fg);font-size:0.8rem;margin-bottom:1.5rem;">Of laad een eerder opgeslagen dataset.</p>
             <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;">
-              <button class="btn btn-primary" onclick="openUploadModal()">📤 CSV uploaden</button>
-              <button class="btn btn-ghost" onclick="showDemoData()">📊 Demo data bekijken</button>
+              <button class="btn btn-primary" onclick="loadAdsData()">⚡ Live data laden</button>
+              <button class="btn btn-ghost btn-sm" onclick="openUploadModal()">📤 CSV uploaden</button>
+              <button class="btn btn-ghost btn-sm" onclick="showDemoData()">📊 Demo bekijken</button>
             </div>
+            <p style="color:var(--muted-fg);font-size:0.75rem;margin-top:1rem;" id="adsConnectHint"></p>
           </div>
         </div>
 
@@ -1240,5 +1262,30 @@ textarea { resize: vertical; min-height: 100px; }
 </div>
 
 <script src="app.js"></script>
+  <!-- ══ ADS KOPPELEN MODAL ══ -->
+  <div class="modal-backdrop" id="adsModal">
+    <div class="modal" style="max-width:460px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+        <div class="modal-title">📊 Advertising API koppelen</div>
+        <button onclick="closeAdsModal()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--muted-fg);">✕</button>
+      </div>
+      <div class="modal-sub">Voer je bol.com Advertising API credentials in. Je vindt deze via <strong>Partnerplatform → Adverteren → API toegang</strong>.</div>
+      <input type="hidden" id="adsModalStoreId">
+      <div class="form-row">
+        <label>Ads Client ID</label>
+        <input type="text" id="adsModalClientId" placeholder="Advertising Client ID" autocomplete="off">
+      </div>
+      <div class="form-row" style="margin-bottom:1.25rem;">
+        <label>Ads Client Secret</label>
+        <input type="password" id="adsModalClientSecret" placeholder="Advertising Client Secret" autocomplete="off">
+      </div>
+      <div id="adsModalError" class="alert alert-danger" style="display:none;margin-bottom:1rem;"></div>
+      <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeAdsModal()">Annuleren</button>
+        <button class="btn btn-primary" id="adsModalSaveBtn" onclick="saveAdsCredentials()">✓ Koppelen & verifiëren</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

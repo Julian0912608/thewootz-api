@@ -17,6 +17,22 @@ export default async function handler(req, res) {
 
   const end   = endDate   || new Date().toISOString().split('T')[0];
   const start = startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const compareMode = parseInt(req.query.compareMode || '0');
+
+  // Bereken vergelijkperiode
+  const startDt = new Date(start);
+  const endDt   = new Date(end);
+  const diffMs  = endDt - startDt;
+  let cmpStart, cmpEnd;
+  if (compareMode === 0) { // vorige periode
+    cmpEnd   = new Date(startDt - 86400000);
+    cmpStart = new Date(cmpEnd - diffMs);
+  } else if (compareMode === 1) { // vorig jaar
+    cmpStart = new Date(startDt); cmpStart.setFullYear(cmpStart.getFullYear() - 1);
+    cmpEnd   = new Date(endDt);   cmpEnd.setFullYear(cmpEnd.getFullYear() - 1);
+  }
+  const cmpStartStr = cmpStart?.toISOString().split('T')[0];
+  const cmpEndStr   = cmpEnd?.toISOString().split('T')[0];
 
   // Bouw query op
   let storeQuery = supabase.from('stores').select('id, platform, name').eq('user_id', user.id).eq('is_active', true);
@@ -94,6 +110,45 @@ export default async function handler(req, res) {
   const allDays = getAllDaysInRange(start, end);
   const perDag = allDays.map(dag => dagMap[dag] || { datum: dag, bestellingen: 0, omzet: 0 });
 
+  // ── VERGELIJKPERIODE ────────────────────────────────────
+  let vergelijking = null;
+  if (compareMode < 2 && cmpStartStr && cmpEndStr) {
+    const { data: cmpOrders } = await supabase
+      .from('orders').select('id, order_date, total_amount, platform')
+      .in('store_id', storeIds).eq('user_id', user.id)
+      .gte('order_date', cmpStartStr).lte('order_date', cmpEndStr);
+
+    const { data: cmpItems } = await supabase
+      .from('order_items').select('product_title, product_ean, quantity, total_price, order_id')
+      .in('store_id', storeIds).eq('user_id', user.id);
+
+    const cmpOrderIds = new Set((cmpOrders || []).map(o => o.id));
+    const cmpFilteredItems = (cmpItems || []).filter(i => cmpOrderIds.has(i.order_id));
+
+    const cmpTotal = (cmpOrders || []).reduce((sum, o) => sum + exBtw(o.total_amount || 0), 0);
+    const cmpCount = (cmpOrders || []).length;
+
+    const cmpDagMap = {};
+    (cmpOrders || []).forEach(o => {
+      if (!cmpDagMap[o.order_date]) cmpDagMap[o.order_date] = { datum: o.order_date, bestellingen: 0, omzet: 0 };
+      cmpDagMap[o.order_date].bestellingen++;
+      cmpDagMap[o.order_date].omzet += exBtw(o.total_amount || 0);
+    });
+
+    vergelijking = {
+      samenvatting: {
+        totalBestellingen: cmpCount,
+        totalOmzet: Math.round(cmpTotal * 100) / 100,
+        gemOmzetPerBestelling: cmpCount > 0 ? Math.round(cmpTotal / cmpCount * 100) / 100 : 0,
+        periode: { start: cmpStartStr, end: cmpEndStr }
+      },
+      perDag: getAllDaysInRange(start, end).map((_, i) => {
+        const cmpDag = getAllDaysInRange(cmpStartStr, cmpEndStr)[i];
+        return cmpDag ? (cmpDagMap[cmpDag] || { datum: cmpDag, bestellingen: 0, omzet: 0 }) : { datum: '', bestellingen: 0, omzet: 0 };
+      })
+    };
+  }
+
   return res.status(200).json({
     samenvatting: {
       totalBestellingen,
@@ -105,6 +160,7 @@ export default async function handler(req, res) {
     perDag,
     perPlatform: Object.values(platformMap),
     stores,
+    vergelijking,
     opgehaaldUitDatabase: true,
     opgehaaldOp: new Date().toISOString()
   });

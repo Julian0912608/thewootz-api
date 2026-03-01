@@ -476,23 +476,24 @@ async function triggerSyncForStore(storeId, fullSync = false) {
 
   const isFullSync = fullSync === true;
   openSyncModal(isFullSync
-    ? 'Volledige sync gestart — bestellingen ophalen...'
+    ? 'Volledige sync — 90 dagen bestellingen ophalen...'
     : 'Incrementele sync — recente bestellingen ophalen...'
   );
 
   let totalOrders = 0;
-  let page = 1;
-  let hasMore = true;
+  let weekOffset = 0;
+  const maxWeeks = isFullSync ? 13 : 0;
 
   try {
-    while (hasMore) {
+    do {
+      const weekNum = isFullSync ? `Week ${weekOffset + 1} van ${maxWeeks + 1}` : 'Actuele bestellingen';
       document.getElementById('syncModalText').textContent =
-        `Pagina ${page} ophalen... (${totalOrders} bestellingen verwerkt)`;
+        `${weekNum} ophalen... (${totalOrders} bestellingen verwerkt)`;
 
       const res = await fetch(`${API}/api/sync/bol`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ storeId, fullSync: isFullSync, page })
+        body: JSON.stringify({ storeId, fullSync: isFullSync, weekOffset })
       });
       const data = await res.json();
 
@@ -505,10 +506,11 @@ async function triggerSyncForStore(storeId, fullSync = false) {
       }
 
       totalOrders += data.ordersNew || 0;
-      hasMore = data.hasMore === true;
-      page    = data.nextPage || page + 1;
-      if (!isFullSync) break;
-    }
+
+      if (!data.hasMore) break;
+      weekOffset = data.nextWeek;
+
+    } while (weekOffset <= 13);
 
     const resultEl = document.getElementById('syncResult');
     resultEl.style.display = 'block';

@@ -1294,6 +1294,7 @@ async function loadAdsData() {
     }];
 
     analyzeData(rows);
+    renderAdsExtras(data);
     showToast(`✓ Live ads data geladen (${data.periode?.start} → ${data.periode?.end})`, 'success');
 
   } catch(e) {
@@ -1306,23 +1307,21 @@ async function loadAdsData() {
 function renderAdsKpis(t, periode) {
   const fmt    = n => '€' + (n||0).toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
   const fmtPct = n => ((n||0)*100).toFixed(2) + '%';
-  const roas   = t.roas || 0;
+  const roas      = t.roas || 0;
   const roasKleur = roas >= 2 ? 'var(--success)' : roas >= 1 ? 'var(--warning)' : 'var(--danger)';
-  const acos   = t.acos || 0;
 
-  // Vervang kpiGrid met advertentie-specifieke KPIs
   document.getElementById('kpiGrid').innerHTML = `<div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-top"><div class="kpi-icon">💰</div><span class="kpi-badge">Live</span></div>
       <div class="kpi-value">${fmt(t.cost)}</div>
       <div class="kpi-label">Totale uitgaven</div>
-      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">→ ${fmt(t.sales)} omzet</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">→ ${fmt(t.sales)} omzet gegenereerd</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-top"><div class="kpi-icon">📈</div><span class="kpi-badge" style="color:${roasKleur};">${roas>=2?'✓ Goed':roas>=1?'⚠ Laag':'✗ Verlies'}</span></div>
       <div class="kpi-value" style="color:${roasKleur};">${roas.toFixed(2)}x</div>
       <div class="kpi-label">ROAS</div>
-      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">ACoS: ${fmtPct(acos)}</div>
+      <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">ACoS: ${fmtPct(t.acos)}${t.tacos != null ? ' · TACos: ' + fmtPct(t.tacos) : ''}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-top"><div class="kpi-icon">🖱️</div></div>
@@ -1337,6 +1336,127 @@ function renderAdsKpis(t, periode) {
       <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">${t.conversions||0} conv · ${(t.impressions||0).toLocaleString('nl-NL')} vertoningen</div>
     </div>
   </div>`;
+}
+
+function renderAdsExtras(data) {
+  const fmt    = n => '€' + (n||0).toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const fmtPct = n => ((n||0)*100).toFixed(2) + '%';
+
+  // ── Dag-voor-dag lijnGrafiek ──────────────────────────────
+  const perDag = data.perDag || [];
+  if (perDag.length > 1) {
+    // Voeg grafiek toe na kpiGrid als nog niet aanwezig
+    let chartCard = document.getElementById('adsDagChart');
+    if (!chartCard) {
+      const kpiEl = document.getElementById('kpiGrid');
+      chartCard = document.createElement('div');
+      chartCard.id = 'adsDagChart';
+      chartCard.className = 'card';
+      chartCard.style.marginBottom = '1.5rem';
+      kpiEl.parentNode.insertBefore(chartCard, kpiEl.nextSibling);
+    }
+    chartCard.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+        <div class="card-title" style="margin:0;">📈 Uitgaven & omzet per dag</div>
+        <span style="font-size:0.7rem;color:var(--muted-fg);">${data.periode?.start} → ${data.periode?.end}</span>
+      </div>
+      <div style="position:relative;height:200px;"><canvas id="adsDagCanvas"></canvas></div>`;
+
+    setTimeout(() => {
+      const ctx = document.getElementById('adsDagCanvas');
+      if (!ctx || !window.Chart) return;
+      if (window._adsDagChart) window._adsDagChart.destroy();
+      window._adsDagChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: perDag.map(d => d.datum?.substring(5)),
+          datasets: [
+            {
+              label: 'Uitgaven',
+              data: perDag.map(d => Math.round((d.cost || 0) * 100) / 100),
+              borderColor: 'var(--danger)', backgroundColor: 'hsla(0,70%,55%,0.08)',
+              borderWidth: 2, fill: true, tension: 0.3,
+              pointRadius: perDag.length > 20 ? 0 : 3
+            },
+            {
+              label: 'Omzet',
+              data: perDag.map(d => Math.round((d.sales14d || 0) * 100) / 100),
+              borderColor: 'var(--success)', backgroundColor: 'transparent',
+              borderWidth: 2, fill: false, tension: 0.3,
+              pointRadius: perDag.length > 20 ? 0 : 3
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: true, position: 'top', labels: { font: { size: 10 } } },
+            tooltip: { callbacks: { label: ctx => ' €' + ctx.raw.toLocaleString('nl-NL', { minimumFractionDigits:2 }) } } },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 10, font: { size: 9 } } },
+            y: { grid: { color: 'hsla(0,0%,50%,0.1)' }, ticks: { callback: v => '€' + v, font: { size: 9 } } }
+          }
+        }
+      });
+    }, 100);
+  }
+
+  // ── Zoektermen tabel ──────────────────────────────────────
+  const terms = data.searchTerms || [];
+  let extraGrid = document.getElementById('adsExtraGrid');
+  if (!extraGrid) {
+    extraGrid = document.createElement('div');
+    extraGrid.id = 'adsExtraGrid';
+    extraGrid.className = 'grid-2';
+    extraGrid.style.marginBottom = '1.5rem';
+    const analyseContent = document.getElementById('analyseContent');
+    // Insert before recommendations card
+    const recsEl = document.getElementById('recommendations');
+    if (recsEl) recsEl.closest('.grid-2')?.parentNode.insertBefore(extraGrid, recsEl.closest('.grid-2'));
+    else analyseContent.appendChild(extraGrid);
+  }
+
+  const termsHtml = terms.length ? `
+    <div class="card">
+      <div class="card-title">🔍 Top zoektermen</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Zoekterm</th><th style="text-align:right">Klikken</th><th style="text-align:right">Conv.</th><th style="text-align:right">CPC</th></tr></thead>
+        <tbody>${terms.slice(0,12).map(t => {
+          const conv = t.conversions14d || t.directConversions14d || 0;
+          const cpc  = t.averageCpc || 0;
+          return `<tr>
+            <td style="font-size:0.8rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.searchTerm || t.term || '—'}</td>
+            <td style="text-align:right;font-size:0.8rem;">${t.clicks || 0}</td>
+            <td style="text-align:right;font-size:0.8rem;font-weight:${conv>0?'600':'400'};color:${conv>0?'var(--success)':'inherit'};">${conv}</td>
+            <td style="text-align:right;font-size:0.8rem;">${fmt(cpc)}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+    </div>` : '<div class="card"><div class="card-title">🔍 Zoektermen</div><p style="color:var(--muted-fg);font-size:0.82rem;">Geen zoektermdata beschikbaar voor deze periode.</p></div>';
+
+  // ── Categorieën ───────────────────────────────────────────
+  const cats = data.categories || [];
+  const catsHtml = cats.length ? `
+    <div class="card">
+      <div class="card-title">📂 Categorieën</div>
+      ${cats.slice(0,8).map(c => {
+        const roas = c.roas14d || 0;
+        const roasKleur = roas >= 2 ? 'var(--success)' : roas >= 1 ? 'var(--warning)' : 'var(--danger)';
+        const maxImpr = Math.max(...cats.map(x => x.impressions || 0), 1);
+        return `<div style="margin-bottom:0.75rem;">
+          <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:0.2rem;">
+            <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%;">${c.categoryName || c.category || c.categoryId || '—'}</span>
+            <span style="font-weight:600;color:${roasKleur};">${roas.toFixed(1)}x ROAS</span>
+          </div>
+          <div style="height:4px;background:var(--muted);border-radius:999px;">
+            <div style="height:4px;border-radius:999px;background:var(--primary);width:${Math.round((c.impressions||0)/maxImpr*100)}%"></div>
+          </div>
+          <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.15rem;">${(c.impressions||0).toLocaleString('nl-NL')} vertoningen · ${c.clicks||0} klikken</div>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  extraGrid.innerHTML = termsHtml + (catsHtml || '<div class="card"><div class="card-title">📂 Categorieën</div><p style="color:var(--muted-fg);font-size:0.82rem;">Geen categoriedata beschikbaar.</p></div>');
 }
 
 

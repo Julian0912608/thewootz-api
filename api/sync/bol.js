@@ -57,7 +57,7 @@ export default async function handler(req, res) {
 
   // ── MODE: shipments — historische verzendingen ────────────
   if (mode === 'shipments') {
-    const r = await fetch(`${BASE}/shipments?page=${currentPage}&fulfilment-method=ALL`, { headers });
+    const r = await fetch(`${BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) {
       const err = await r.text();
       return res.status(r.status).json({ error: `Shipments API fout (${r.status})`, detail: err.substring(0, 300) });

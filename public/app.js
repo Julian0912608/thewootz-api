@@ -854,33 +854,62 @@ async function checkZoekpositie() {
   const result = document.getElementById('zoekpositieResult');
   if (!term) return;
 
-  result.innerHTML = '<span class="spinner"></span> Positie opzoeken...';
+  result.innerHTML = '<div style="display:flex;align-items:center;gap:0.5rem;font-size:0.82rem;color:var(--muted-fg);"><span class="spinner"></span> Positie opzoeken...</div>';
 
   try {
-    const res  = await fetch(`${API}/api/zoekpositie?term=${encodeURIComponent(term)}`, { headers: getAuthHeaders() });
+    const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
+    const url = `${API}/api/zoekpositie?term=${encodeURIComponent(term)}${storeId ? '&storeId=' + storeId : ''}`;
+    const res  = await fetch(url, { headers: getAuthHeaders() });
     const data = await res.json();
 
-    if (!res.ok || data.error) {
-      result.innerHTML = `<div class="alert alert-danger" style="font-size:0.78rem;">${data.error || 'Niet gevonden'}</div>`;
+    if (!res.ok) {
+      result.innerHTML = `<div class="alert alert-danger" style="font-size:0.78rem;">${data.error || 'API fout'}</div>`;
       return;
     }
 
-    const pos   = data.positie;
-    const kleur = pos <= 3 ? 'var(--success)' : pos <= 10 ? 'var(--primary)' : pos <= 20 ? 'hsl(45,90%,50%)' : 'var(--danger)';
-    result.innerHTML = `
-      <div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--muted);border-radius:var(--radius);">
-        <div style="font-size:2rem;font-weight:700;color:${kleur};font-family:var(--font-h);">#${pos}</div>
-        <div>
-          <div style="font-weight:600;font-size:0.82rem;">${data.titel || term}</div>
-          <div style="font-size:0.72rem;color:var(--muted-fg);">Positie ${pos} van ${data.totaal || '?'} resultaten · Pagina ${Math.ceil(pos/24)}</div>
-        </div>
-      </div>`;
+    // EAN resultaat
+    if (data.ean) {
+      const pos   = data.eigenAanbod?.ranking || data.positie;
+      const kleur = !pos ? 'var(--muted-fg)' : pos <= 3 ? 'var(--success)' : pos <= 10 ? 'var(--primary)' : pos <= 20 ? 'hsl(45,90%,50%)' : 'var(--danger)';
+      result.innerHTML = `
+        <div style="padding:0.75rem;background:var(--muted);border-radius:var(--radius);font-size:0.8rem;">
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+            ${pos ? `<div style="font-size:1.8rem;font-weight:700;color:${kleur};font-family:var(--font-h);">#${pos}</div>` : '<div style="font-size:1.3rem;">—</div>'}
+            <div>
+              <div style="font-weight:600;">${data.titel || data.ean}</div>
+              <div style="font-size:0.7rem;color:var(--muted-fg);">${data.aantalAanbieders || 0} aanbieders${data.product?.rating ? ' · ⭐ ' + data.product.rating : ''}</div>
+            </div>
+          </div>
+          ${data.eigenPrijs ? `<div style="display:flex;gap:1rem;">
+            <span>Jouw prijs: <strong>€${data.eigenPrijs}</strong></span>
+            ${data.laagstePrijs && data.laagstePrijs !== data.eigenPrijs ? `<span style="color:var(--danger)">Laagste: €${data.laagstePrijs}</span>` : ''}
+          </div>` : ''}
+          <div style="margin-top:0.4rem;font-size:0.72rem;color:var(--muted-fg);">${data.tip || ''}</div>
+        </div>`;
 
-    // Sla op in history
-    if (!zoekpositieCache[term]) zoekpositieCache[term] = [];
-    zoekpositieCache[term].unshift({ datum: new Date().toLocaleDateString('nl-NL'), positie: pos });
-    if (zoekpositieCache[term].length > 5) zoekpositieCache[term].pop();
-    renderZoekHistory(term);
+      if (pos) {
+        if (!zoekpositieCache[term]) zoekpositieCache[term] = [];
+        zoekpositieCache[term].unshift({ datum: new Date().toLocaleDateString('nl-NL'), positie: pos });
+        if (zoekpositieCache[term].length > 5) zoekpositieCache[term].pop();
+        renderZoekHistory(term);
+      }
+      return;
+    }
+
+    // Zoekterm resultaat
+    if (data.resultaten) {
+      result.innerHTML = `<div style="font-size:0.78rem;">
+        <div style="color:var(--muted-fg);margin-bottom:0.5rem;">${data.tip}</div>
+        ${data.resultaten.map(r => `<div style="padding:0.4rem 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="document.getElementById('zoekEan').value='${r.ean}';checkZoekpositie();">
+          <span style="color:var(--muted-fg);">#${r.positie}</span> ${r.titel?.substring(0,40) || r.ean}
+          <span style="font-size:0.68rem;color:var(--primary);margin-left:0.5rem;">→ ${r.ean}</span>
+        </div>`).join('')}
+      </div>`;
+      return;
+    }
+
+    // Fallback
+    result.innerHTML = `<div class="alert alert-warning" style="font-size:0.78rem;">${data.tip || data.error || 'Geen resultaat'}</div>`;
 
   } catch (e) {
     result.innerHTML = `<div class="alert alert-danger" style="font-size:0.78rem;">Fout: ${e.message}</div>`;

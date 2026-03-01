@@ -306,6 +306,8 @@ function renderStoreList() {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           Sync
         </button>
+        ${s.platform === 'bol' && !s.ads_client_id_enc ? `<button class="btn btn-ghost btn-sm" style="color:var(--primary);" onclick="openAdsModal('${s.id}')">📊 Ads koppelen</button>` : ''}
+        ${s.platform === 'bol' && s.ads_client_id_enc ? `<span style="font-size:0.7rem;color:var(--success);padding:0.2rem 0.4rem;">✓ Ads</span>` : ''}
         <button class="btn btn-danger btn-sm" onclick="deleteStore('${s.id}')">✕</button>
       </div>
     </div>`;
@@ -424,6 +426,18 @@ async function addStore() {
     document.getElementById('storeName').value         = '';
     document.getElementById('storeClientId').value     = '';
     document.getElementById('storeClientSecret').value = '';
+
+    // Sla advertising credentials op als ingevuld
+    const adsClientId     = document.getElementById('adsClientId')?.value.trim();
+    const adsClientSecret = document.getElementById('adsClientSecret')?.value.trim();
+    if (adsClientId && adsClientSecret && data.store?.id) {
+      await fetch(`${API}/api/sync/bol-ads`, {
+        method: 'POST', headers: getAuthHeaders(),
+        body: JSON.stringify({ storeId: data.store.id, adsClientId, adsClientSecret })
+      });
+      document.getElementById('adsClientId').value     = '';
+      document.getElementById('adsClientSecret').value = '';
+    }
 
     await loadStores();
     const storeId = data.store.id;
@@ -1179,6 +1193,127 @@ function filterAnalyseTable(query) {
     ? _allAnalyseProducts.filter(p => p.naam.toLowerCase().includes(query.toLowerCase()))
     : _allAnalyseProducts;
   renderAnalyseTable(filtered);
+}
+
+
+// ── Live advertising data laden via API ──────────────────
+async function loadAdsData() {
+  if (!await ensureSession()) return;
+
+  const btn = document.getElementById('loadAdsBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Laden...'; }
+
+  const start = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+  const end   = document.getElementById('endDate')?.value   || new Date().toISOString().split('T')[0];
+  const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
+
+  try {
+    const res  = await fetch(`${API}/api/sync/bol-ads?storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
+    const data = await res.json();
+
+    if (!res.ok || data.error === 'no_ads_credentials') {
+      // Geen credentials — toon instructie
+      const hint = document.getElementById('adsConnectHint');
+      if (hint) hint.innerHTML = '⚠️ Geen Advertising API gekoppeld. Ga naar <strong>Mijn Winkels</strong> en voeg je Advertising credentials toe.';
+      document.getElementById('analyseEmpty').style.display = 'block';
+      showToast('Koppel eerst de Advertising API via Mijn Winkels', 'warning');
+      return;
+    }
+
+    if (!res.ok) {
+      showToast(data.error || 'Laden mislukt', 'error');
+      return;
+    }
+
+    // Converteer API data naar analyzeData formaat
+    const products = data.products || [];
+    if (!products.length && !(data.performance?.length)) {
+      showToast('Geen advertentiedata gevonden voor deze periode', 'warning');
+      return;
+    }
+
+    // Map API response naar rijen die analyzeData begrijpt
+    const rows = products.map(p => ({
+      'Productnaam':           p.title || p.ean || p.productId || 'Onbekend',
+      'Advertentie-uitgaven':  String(p.spend || p.cost || 0),
+      'Vertoningen':           String(p.impressions || 0),
+      'Klikken':               String(p.clicks || 0),
+      'Bestellingen':          String(p.orders || p.conversions || 0),
+      'Omzet':                 String(p.revenue || 0)
+    }));
+
+    // Als geen product-level data, gebruik campagne-level
+    if (!rows.length && data.performance?.length) {
+      data.performance.forEach(c => {
+        rows.push({
+          'Productnaam':           c.campaignName || c.name || 'Campagne',
+          'Advertentie-uitgaven':  String(c.spend || c.cost || 0),
+          'Vertoningen':           String(c.impressions || 0),
+          'Klikken':               String(c.clicks || 0),
+          'Bestellingen':          String(c.orders || c.conversions || 0),
+          'Omzet':                 String(c.revenue || 0)
+        });
+      });
+    }
+
+    analyzeData(rows);
+    showToast(`Live data geladen: ${rows.length} producten/campagnes`, 'success');
+
+  } catch(e) {
+    showToast('Fout: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⚡ Live data'; }
+  }
+}
+
+
+// ── Ads modal ─────────────────────────────────────────────
+function openAdsModal(storeId) {
+  document.getElementById('adsModalStoreId').value = storeId;
+  document.getElementById('adsModalClientId').value = '';
+  document.getElementById('adsModalClientSecret').value = '';
+  document.getElementById('adsModalError').style.display = 'none';
+  document.getElementById('adsModal').classList.add('open');
+}
+
+function closeAdsModal() {
+  document.getElementById('adsModal').classList.remove('open');
+}
+
+async function saveAdsCredentials() {
+  const storeId         = document.getElementById('adsModalStoreId').value;
+  const adsClientId     = document.getElementById('adsModalClientId').value.trim();
+  const adsClientSecret = document.getElementById('adsModalClientSecret').value.trim();
+  const errEl           = document.getElementById('adsModalError');
+  const btn             = document.getElementById('adsModalSaveBtn');
+
+  if (!adsClientId || !adsClientSecret) {
+    errEl.textContent = 'Vul beide velden in'; errEl.style.display = 'block'; return;
+  }
+
+  btn.disabled = true; btn.textContent = '⏳ Verifiëren...';
+  errEl.style.display = 'none';
+
+  try {
+    const res  = await fetch(`${API}/api/sync/bol-ads`, {
+      method: 'POST', headers: getAuthHeaders(),
+      body: JSON.stringify({ storeId, adsClientId, adsClientSecret })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Koppelen mislukt'; errEl.style.display = 'block'; return;
+    }
+
+    closeAdsModal();
+    await loadStores();
+    showToast('Advertising API succesvol gekoppeld! ✓', 'success');
+
+  } catch(e) {
+    errEl.textContent = 'Fout: ' + e.message; errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Koppelen & verifiëren';
+  }
 }
 
 // Init: laad opgeslagen datasets bij start

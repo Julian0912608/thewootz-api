@@ -1,6 +1,7 @@
 {
   "name": "thewootz-api",
   "version": "2.0.0",
+  "description": "TheWootz SaaS — bol.com + multi-platform optimizer backend",
   "private": true,
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

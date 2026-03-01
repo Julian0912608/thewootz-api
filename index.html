@@ -4,1516 +4,1133 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TheWootz — bol.com Optimizer</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: hsl(220,20%,97%);
-    --fg: hsl(222,47%,11%);
-    --card: hsl(0,0%,100%);
-    --border: hsl(220,13%,91%);
-    --muted: hsl(220,14%,96%);
-    --muted-fg: hsl(220,9%,46%);
-    --primary: hsl(25,95%,53%);
-    --primary-fg: #fff;
-    --accent: hsl(25,95%,95%);
-    --accent-fg: hsl(25,95%,40%);
-    --success: hsl(142,71%,45%);
-    --warning: hsl(38,92%,50%);
-    --danger: hsl(0,84%,60%);
-    --sidebar-bg: hsl(222,47%,11%);
-    --sidebar-fg: hsl(220,20%,80%);
-    --sidebar-accent: hsl(222,40%,16%);
-    --sidebar-accent-fg: hsl(220,20%,90%);
-    --sidebar-border: hsl(222,40%,18%);
-    --radius: 0.75rem;
-    --font-heading: 'Space Grotesk', system-ui, sans-serif;
-    --font-body: 'Inter', system-ui, sans-serif;
-  }
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:             hsl(220,20%,97%);
+  --fg:             hsl(222,47%,11%);
+  --card:           #fff;
+  --border:         hsl(220,13%,91%);
+  --muted:          hsl(220,14%,96%);
+  --muted-fg:       hsl(220,9%,46%);
+  --primary:        hsl(25,95%,53%);
+  --primary-dark:   hsl(25,95%,45%);
+  --primary-fg:     #fff;
+  --accent:         hsl(25,95%,95%);
+  --accent-fg:      hsl(25,95%,40%);
+  --success:        hsl(142,71%,45%);
+  --warning:        hsl(38,92%,50%);
+  --danger:         hsl(0,84%,60%);
+  --info:           hsl(217,91%,60%);
+  --sidebar-bg:     hsl(222,47%,11%);
+  --sidebar-fg:     hsl(220,20%,70%);
+  --sidebar-accent: hsl(222,40%,16%);
+  --sidebar-border: hsl(222,40%,18%);
+  --radius:         0.75rem;
+  --sidebar-w:      260px;
+  --topbar-h:       64px;
+  --font-h:         'Space Grotesk', system-ui, sans-serif;
+  --font-b:         'Inter', system-ui, sans-serif;
+  --shadow-sm:      0 1px 4px rgba(0,0,0,0.06);
+  --shadow-md:      0 4px 16px rgba(0,0,0,0.1);
+}
 
-  * { margin:0; padding:0; box-sizing:border-box; }
+/* ═══════════════════════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body { background:var(--bg); color:var(--fg); font-family:var(--font-b); min-height:100vh; overflow-x:hidden; }
+h1,h2,h3,h4,h5,h6 { font-family:var(--font-h); }
+a { text-decoration:none; color:inherit; }
+button { cursor:pointer; font-family:var(--font-b); }
+input, textarea, select { font-family:var(--font-b); }
 
-  body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: var(--font-body);
-    min-height: 100vh;
-    display: flex;
-    overflow-x: hidden;
-  }
+/* ═══════════════════════════════════════════════════════════
+   AUTH SCREENS (Login + Register)
+═══════════════════════════════════════════════════════════ */
+#authScreen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, hsl(222,47%,11%) 0%, hsl(222,47%,18%) 100%);
+  padding: 1.5rem;
+}
+.auth-card {
+  background: var(--card);
+  border-radius: 1.25rem;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow-md);
+}
+.auth-logo {
+  display: flex; align-items: center; gap: 0.75rem;
+  margin-bottom: 2rem;
+}
+.auth-logo-icon {
+  width: 44px; height: 44px;
+  background: var(--primary);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-h); font-weight: 700; font-size: 1.1rem; color: #fff;
+}
+.auth-logo-name { font-family: var(--font-h); font-size: 1.3rem; font-weight: 700; }
+.auth-logo-sub  { font-size: 0.75rem; color: var(--muted-fg); }
 
-  h1,h2,h3,h4,h5,h6 { font-family: var(--font-heading); }
+.auth-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.4rem; }
+.auth-sub   { font-size: 0.85rem; color: var(--muted-fg); margin-bottom: 1.75rem; }
 
-  /* ===== SIDEBAR ===== */
+.auth-tabs {
+  display: flex; gap: 0.5rem;
+  margin-bottom: 1.75rem;
+  background: var(--muted);
+  border-radius: 0.5rem;
+  padding: 0.25rem;
+}
+.auth-tab {
+  flex: 1; padding: 0.5rem;
+  border: none; background: none;
+  border-radius: 0.35rem;
+  font-size: 0.85rem; font-weight: 600;
+  color: var(--muted-fg);
+  transition: all 0.15s;
+}
+.auth-tab.active { background: var(--card); color: var(--fg); box-shadow: var(--shadow-sm); }
+
+.form-group { margin-bottom: 1rem; }
+.form-label {
+  display: block;
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--muted-fg);
+  margin-bottom: 0.4rem;
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.form-input {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.9rem;
+  color: var(--fg);
+  background: var(--card);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.form-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px hsl(25,95%,92%);
+}
+.form-input.error { border-color: var(--danger); }
+
+.auth-error {
+  background: hsl(0,84%,96%);
+  border: 1px solid hsl(0,84%,85%);
+  color: hsl(0,60%,40%);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+.auth-success {
+  background: hsl(142,71%,95%);
+  border: 1px solid hsl(142,71%,70%);
+  color: hsl(142,50%,25%);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  margin-bottom: 1rem;
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   APP LAYOUT
+═══════════════════════════════════════════════════════════ */
+#appScreen { display: none; }
+
+/* Sidebar */
+.sidebar {
+  position: fixed; top:0; left:0; bottom:0;
+  width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  display: flex; flex-direction: column;
+  z-index: 100;
+  border-right: 1px solid var(--sidebar-border);
+  transition: transform 0.25s ease;
+}
+.sidebar-logo {
+  padding: 1.25rem 1.25rem 1rem;
+  display: flex; align-items: center; gap: 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--primary);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-h); font-weight: 700; font-size: 0.95rem; color: #fff;
+  flex-shrink: 0;
+}
+.logo-name { font-family: var(--font-h); font-weight: 700; font-size: 0.95rem; color: #fff; }
+.logo-sub  { font-size: 0.68rem; color: var(--sidebar-fg); opacity: 0.7; }
+
+/* User section in sidebar */
+.sidebar-user {
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--sidebar-border);
+  display: flex; align-items: center; gap: 0.6rem;
+}
+.user-avatar {
+  width: 32px; height: 32px;
+  background: var(--primary);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.8rem; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.user-name  { font-size: 0.8rem; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-plan  { font-size: 0.65rem; color: var(--sidebar-fg); opacity: 0.7; }
+.user-info  { flex: 1; min-width: 0; }
+.sidebar-logout-btn {
+  background: none; border: none; padding: 0.25rem;
+  color: var(--sidebar-fg); opacity: 0.5;
+  transition: opacity 0.15s;
+  display: flex;
+}
+.sidebar-logout-btn:hover { opacity: 1; }
+
+/* Store selector */
+.sidebar-store {
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+.store-select {
+  width: 100%;
+  background: var(--sidebar-accent);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 0.4rem;
+  color: var(--sidebar-fg);
+  font-size: 0.78rem;
+  padding: 0.4rem 0.65rem;
+  outline: none;
+}
+.store-select option { background: hsl(222,47%,15%); }
+
+.sidebar-section {
+  padding: 0.85rem 1.25rem 0.3rem;
+  font-size: 0.62rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.2px;
+  color: var(--sidebar-fg); opacity: 0.4;
+}
+
+/* Nav items */
+nav#sideNav { flex: 1; padding: 0.25rem 0; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.55rem 1.25rem;
+  margin: 0.05rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.84rem; font-weight: 500;
+  color: var(--sidebar-fg);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+.nav-item:hover { background: var(--sidebar-accent); color: hsl(220,20%,90%); }
+.nav-item.active { background: var(--primary); color: #fff; }
+.nav-item.active svg { opacity: 1; }
+.nav-icon { width: 17px; height: 17px; opacity: 0.65; flex-shrink: 0; }
+.nav-item.active .nav-icon { opacity: 1; }
+
+.sidebar-footer {
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--sidebar-border);
+  font-size: 0.68rem; color: var(--sidebar-fg); opacity: 0.35;
+}
+
+/* Mobile hamburger */
+.hamburger {
+  display: none;
+  position: fixed; top: 1rem; left: 1rem;
+  z-index: 200;
+  background: var(--sidebar-bg);
+  border: none; border-radius: 0.5rem;
+  padding: 0.5rem; color: #fff;
+  box-shadow: var(--shadow-md);
+}
+.sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 90;
+  backdrop-filter: blur(2px);
+}
+
+/* Main content area */
+.main-wrap {
+  margin-left: var(--sidebar-w);
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+  transition: margin-left 0.25s;
+}
+
+/* Topbar */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  height: var(--topbar-h);
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  padding: 0 1.75rem;
+  display: flex; align-items: center; gap: 1rem;
+}
+.topbar-title {
+  font-family: var(--font-h); font-size: 1rem; font-weight: 600;
+  flex: 1;
+}
+.live-pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;
+  color: var(--success);
+  background: rgba(45,185,90,0.1);
+  border: 1px solid rgba(45,185,90,0.2);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+.live-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.period-group {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.78rem; color: var(--muted-fg);
+}
+.period-group input[type=date] {
+  border: 1.5px solid var(--border); border-radius: 0.4rem;
+  padding: 0.3rem 0.5rem; font-size: 0.75rem;
+  font-family: var(--font-b); color: var(--fg);
+  background: var(--muted); outline: none; cursor: pointer;
+}
+.period-group input[type=date]:focus { border-color: var(--primary); }
+
+.topbar-actions { display: flex; align-items: center; gap: 0.6rem; margin-left: auto; }
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTONS
+═══════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.82rem; font-weight: 600;
+  border: none; cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-primary  { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(249,115,22,0.3); }
+.btn-ghost    { background: transparent; color: var(--muted-fg); border: 1.5px solid var(--border); }
+.btn-ghost:hover { background: var(--muted); color: var(--fg); }
+.btn-danger   { background: transparent; color: var(--danger); border: 1.5px solid hsl(0,84%,85%); }
+.btn-danger:hover { background: hsl(0,84%,96%); }
+.btn-success  { background: var(--success); color: #fff; }
+.btn-sm       { padding: 0.35rem 0.75rem; font-size: 0.75rem; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
+.btn-full { width: 100%; justify-content: center; padding: 0.7rem; font-size: 0.9rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   CONTENT
+═══════════════════════════════════════════════════════════ */
+.content { flex:1; padding: 1.75rem; max-width: 1200px; width: 100%; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.page-header { margin-bottom: 1.75rem; }
+.page-title  { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.3rem; }
+.page-sub    { font-size: 0.85rem; color: var(--muted-fg); }
+
+/* ═══════════════════════════════════════════════════════════
+   CARDS
+═══════════════════════════════════════════════════════════ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+.card-title { font-family: var(--font-h); font-size: 0.9rem; font-weight: 600; margin-bottom: 1rem; }
+.card-sub   { font-size: 0.8rem; color: var(--muted-fg); margin-bottom: 1rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   KPI CARDS
+═══════════════════════════════════════════════════════════ */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.25rem; }
+.kpi-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem 1.4rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.kpi-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.kpi-top  { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.9rem; }
+.kpi-icon {
+  width: 42px; height: 42px; border-radius: 50%;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.15rem;
+}
+.kpi-badge {
+  font-size: 0.7rem; font-weight: 700;
+  padding: 0.2rem 0.5rem; border-radius: 999px;
+  background: rgba(22,163,74,0.1); color: hsl(142,60%,30%);
+}
+.kpi-badge.neg { background: rgba(220,38,38,0.1); color: hsl(0,60%,40%); }
+.kpi-value { font-family: var(--font-h); font-size: 1.8rem; font-weight: 700; line-height: 1; margin-bottom: 0.3rem; }
+.kpi-label { font-size: 0.78rem; color: var(--muted-fg); }
+
+/* ═══════════════════════════════════════════════════════════
+   GRID LAYOUTS
+═══════════════════════════════════════════════════════════ */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   TABLES
+═══════════════════════════════════════════════════════════ */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+th {
+  text-align: left; padding: 0.5rem 0.75rem;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: var(--muted-fg);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════
+   BADGES / PILLS
+═══════════════════════════════════════════════════════════ */
+.pill {
+  display: inline-flex; align-items: center;
+  padding: 0.15rem 0.55rem; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 600;
+}
+.pill-green  { background: rgba(22,163,74,0.1);  color: hsl(142,60%,30%); }
+.pill-orange { background: rgba(249,115,22,0.1); color: hsl(25,80%,40%); }
+.pill-red    { background: rgba(220,38,38,0.1);  color: hsl(0,60%,40%); }
+.pill-blue   { background: rgba(37,99,235,0.1);  color: hsl(220,80%,40%); }
+.pill-purple { background: rgba(139,92,246,0.1); color: hsl(263,70%,40%); }
+
+/* ═══════════════════════════════════════════════════════════
+   FORMS
+═══════════════════════════════════════════════════════════ */
+label { font-size: 0.75rem; font-weight: 600; color: var(--muted-fg); display: block; margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.4px; }
+input[type=text], input[type=password], input[type=number], input[type=email], textarea, select {
+  width: 100%; border: 1.5px solid var(--border); border-radius: 0.5rem;
+  padding: 0.6rem 0.85rem; font-size: 0.875rem; font-family: var(--font-b);
+  color: var(--fg); background: var(--card); outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px hsl(25,95%,92%);
+}
+textarea { resize: vertical; min-height: 100px; }
+.form-row { margin-bottom: 1rem; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   ALERTS
+═══════════════════════════════════════════════════════════ */
+.alert { padding: 0.75rem 1rem; border-radius: 0.5rem; font-size: 0.82rem; line-height: 1.5; margin-bottom: 0.75rem; }
+.alert-info    { background: hsl(217,91%,97%); border-left: 3px solid var(--info);    color: hsl(217,50%,30%); }
+.alert-success { background: hsl(142,71%,96%); border-left: 3px solid var(--success); color: hsl(142,50%,25%); }
+.alert-warning { background: hsl(38,92%,96%);  border-left: 3px solid var(--warning); color: hsl(38,60%,25%); }
+.alert-orange  { background: var(--accent);    border-left: 3px solid var(--primary); color: var(--accent-fg); }
+.alert-danger  { background: hsl(0,84%,97%);   border-left: 3px solid var(--danger);  color: hsl(0,60%,40%); }
+
+/* ═══════════════════════════════════════════════════════════
+   EMPTY STATE + SPINNER
+═══════════════════════════════════════════════════════════ */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 3.5rem 2rem; text-align: center; color: var(--muted-fg);
+}
+.empty-icon { font-size: 2.25rem; margin-bottom: 0.85rem; }
+.spinner {
+  display: inline-block; width: 16px; height: 16px;
+  border: 2.5px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+.spinner-lg { width: 36px; height: 36px; border-width: 3px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════════════════════════
+   UPLOAD ZONE
+═══════════════════════════════════════════════════════════ */
+.upload-zone {
+  border: 2px dashed var(--primary); border-radius: var(--radius);
+  padding: 2.5rem; text-align: center; cursor: pointer;
+  background: var(--accent); transition: all 0.2s;
+}
+.upload-zone:hover { background: hsl(25,95%,90%); }
+.upload-zone input { display: none; }
+.upload-icon {
+  width: 52px; height: 52px; background: var(--primary); border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.4rem; margin: 0 auto 0.85rem;
+}
+.upload-title { font-family: var(--font-h); font-size: 0.95rem; font-weight: 600; margin-bottom: 0.35rem; }
+.upload-sub   { font-size: 0.75rem; color: var(--muted-fg); }
+
+/* ═══════════════════════════════════════════════════════════
+   STORE CARDS (stores beheer)
+═══════════════════════════════════════════════════════════ */
+.store-card {
+  background: var(--card); border: 1.5px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem;
+  display: flex; align-items: center; gap: 1rem;
+  margin-bottom: 0.75rem; box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s;
+}
+.store-card:hover { border-color: var(--primary); }
+.store-platform-icon {
+  width: 44px; height: 44px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem; flex-shrink: 0;
+  background: var(--muted);
+}
+.store-info { flex: 1; min-width: 0; }
+.store-name     { font-weight: 600; font-size: 0.9rem; }
+.store-platform { font-size: 0.72rem; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.5px; }
+.store-sync     { font-size: 0.72rem; color: var(--muted-fg); margin-top: 0.15rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   SYNC BUTTON STATES
+═══════════════════════════════════════════════════════════ */
+.sync-status {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.75rem; padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+}
+.sync-ok   { background: rgba(22,163,74,0.1);  color: hsl(142,60%,30%); }
+.sync-warn { background: rgba(249,115,22,0.1); color: hsl(25,80%,40%); }
+.sync-err  { background: rgba(220,38,38,0.1);  color: hsl(0,60%,40%); }
+
+/* ═══════════════════════════════════════════════════════════
+   CHART BARS
+═══════════════════════════════════════════════════════════ */
+.chart-wrap { padding-bottom: 0.5rem; overflow-x: auto; }
+.chart-bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; min-width: max-content; }
+.bar-col { display: flex; flex-direction: column; align-items: center; width: 28px; }
+.bar-fill {
+  width: 100%; background: var(--primary);
+  border-radius: 3px 3px 0 0; opacity: 0.85;
+  transition: opacity 0.15s, height 0.4s ease;
+  cursor: pointer;
+}
+.bar-fill:hover { opacity: 1; }
+.bar-label {
+  font-size: 0.5rem; color: var(--muted-fg); margin-top: 4px;
+  transform: rotate(-40deg); transform-origin: top; white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INSIGHT TAGS + COPY BUTTON
+═══════════════════════════════════════════════════════════ */
+.tag {
+  display: inline-block; background: var(--muted); border: 1px solid var(--border);
+  border-radius: 4px; font-size: 0.7rem; padding: 0.15rem 0.5rem; margin: 0.15rem;
+}
+.copy-btn {
+  position: absolute; top: 0.5rem; right: 0.5rem;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0.2rem 0.55rem;
+  font-size: 0.68rem; color: var(--muted-fg);
+}
+.copy-btn:hover { color: var(--fg); }
+.output-box {
+  position: relative; background: var(--muted); border: 1px solid var(--border);
+  border-radius: 0.5rem; padding: 1rem; font-size: 0.83rem; line-height: 1.65; white-space: pre-wrap;
+}
+.divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+/* ═══════════════════════════════════════════════════════════
+   ANALYSE / COMPETITOR
+═══════════════════════════════════════════════════════════ */
+.competitor-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem;
+}
+.competitor-rank { font-size: 0.62rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--primary); margin-bottom: 0.3rem; }
+.competitor-name { font-family: var(--font-h); font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem; }
+.competitor-meta { font-size: 0.73rem; color: var(--muted-fg); margin-bottom: 0.85rem; }
+.kpi-tile { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.25rem; border-top: 3px solid var(--primary); }
+.score-number { font-family: var(--font-h); font-size: 4rem; font-weight: 700; line-height: 1; }
+.score-label  { font-size: 0.72rem; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 0.25rem; }
+.fade-in { animation: fadeIn 0.35s ease forwards; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+
+/* ═══════════════════════════════════════════════════════════
+   POPUP / MODAL
+═══════════════════════════════════════════════════════════ */
+.modal-backdrop {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5); z-index: 300;
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(4px); padding: 1rem;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--card); border-radius: 1rem;
+  padding: 2rem; width: 100%; max-width: 480px;
+  box-shadow: var(--shadow-md);
+}
+.modal-title { font-family: var(--font-h); font-size: 1.2rem; font-weight: 700; margin-bottom: 0.4rem; }
+.modal-sub   { font-size: 0.82rem; color: var(--muted-fg); margin-bottom: 1.5rem; line-height: 1.6; }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — Tablet (max 1024px)
+═══════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .grid-3   { grid-template-columns: 1fr 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — Mobile (max 768px)
+═══════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 280px; }
+  
   .sidebar {
-    width: 260px;
-    min-height: 100vh;
-    background: var(--sidebar-bg);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    position: fixed;
-    top: 0; left: 0; bottom: 0;
-    z-index: 50;
-    border-right: 1px solid var(--sidebar-border);
+    transform: translateX(-100%);
+    box-shadow: var(--shadow-md);
   }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-overlay.open { display: block; }
+  
+  .hamburger { display: flex; }
+  .main-wrap { margin-left: 0; }
+  
+  .topbar { padding: 0 1rem; padding-left: 3.5rem; }
+  .topbar-title { font-size: 0.9rem; }
+  .period-group { display: none; }
+  
+  .content { padding: 1rem; }
+  
+  .kpi-grid { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+  .kpi-value { font-size: 1.4rem; }
+  
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .form-grid        { grid-template-columns: 1fr; }
+  
+  .page-title { font-size: 1.25rem; }
+  
+  .auth-card { padding: 2rem 1.5rem; }
+  
+  .btn-sm-hide { display: none; }
+}
 
-  .sidebar-logo {
-    padding: 1.5rem 1.25rem 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--sidebar-border);
-  }
-
-  .logo-icon {
-    width: 38px; height: 38px;
-    background: var(--primary);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--font-heading);
-    font-weight: 700;
-    font-size: 1rem;
-    color: white;
-    flex-shrink: 0;
-  }
-
-  .logo-text { flex: 1; }
-  .logo-name {
-    font-family: var(--font-heading);
-    font-weight: 700;
-    font-size: 1rem;
-    color: white;
-    line-height: 1.2;
-  }
-  .logo-sub {
-    font-size: 0.72rem;
-    color: var(--sidebar-fg);
-    opacity: 0.7;
-  }
-
-  .sidebar-conn {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--sidebar-border);
-  }
-
-  .conn-btn {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.55rem 0.85rem;
-    border-radius: calc(var(--radius) - 2px);
-    background: var(--sidebar-accent);
-    border: 1px solid var(--sidebar-border);
-    color: var(--sidebar-fg);
-    font-size: 0.8rem;
-    font-family: var(--font-body);
-    cursor: pointer;
-    transition: background 0.15s;
-    text-align: left;
-  }
-  .conn-btn:hover { background: hsl(222,40%,20%); }
-  .conn-btn.connected { border-color: rgba(45,179,90,0.4); background: rgba(45,179,90,0.08); color: #6fcf97; }
-
-  .conn-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--muted-fg);
-    flex-shrink: 0;
-    transition: background 0.3s;
-  }
-  .conn-dot.live { background: #2db95a; box-shadow: 0 0 0 3px rgba(45,185,90,0.2); }
-
-  .sidebar-section-label {
-    padding: 1rem 1.25rem 0.4rem;
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    color: var(--sidebar-fg);
-    opacity: 0.5;
-  }
-
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.6rem 1.25rem;
-    margin: 0.1rem 0.75rem;
-    border-radius: calc(var(--radius) - 2px);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--sidebar-fg);
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .nav-item:hover { background: var(--sidebar-accent); color: var(--sidebar-accent-fg); }
-  .nav-item.active {
-    background: var(--primary);
-    color: white;
-  }
-  .nav-item.active .nav-icon { opacity: 1; }
-  .nav-icon { width: 18px; height: 18px; opacity: 0.7; flex-shrink: 0; }
-
-  .sidebar-footer {
-    margin-top: auto;
-    padding: 1rem 1.25rem;
-    border-top: 1px solid var(--sidebar-border);
-    font-size: 0.72rem;
-    color: var(--sidebar-fg);
-    opacity: 0.4;
-  }
-
-  /* ===== MAIN ===== */
-  .main-wrap {
-    margin-left: 260px;
-    flex: 1;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* ===== TOPBAR ===== */
-  .topbar {
-    background: white;
-    border-bottom: 1px solid var(--border);
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-    padding: 0 2rem;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    position: sticky;
-    top: 0;
-    z-index: 40;
-  }
-
-  .live-pill {
-    display: flex; align-items: center; gap: 0.4rem;
-    font-size: 0.72rem; font-weight: 600;
-    color: #2db95a;
-    background: rgba(45,185,90,0.1);
-    border: 1px solid rgba(45,185,90,0.25);
-    padding: 0.25rem 0.6rem;
-    border-radius: 999px;
-  }
-  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #2db95a; }
-
-  .period-group {
-    display: flex; align-items: center; gap: 0.5rem;
-    font-size: 0.8rem; color: var(--muted-fg);
-  }
-  .period-group input[type=date] {
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 4px);
-    padding: 0.3rem 0.6rem;
-    font-size: 0.78rem;
-    font-family: var(--font-body);
-    color: var(--fg);
-    background: var(--muted);
-    outline: none;
-    cursor: pointer;
-  }
-
-  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
-
-  .btn {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.5rem 1.1rem;
-    border-radius: calc(var(--radius) - 2px);
-    font-size: 0.82rem;
-    font-weight: 600;
-    font-family: var(--font-body);
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-    text-decoration: none;
-  }
-  .btn-primary { background: var(--primary); color: white; }
-  .btn-primary:hover { background: hsl(25,95%,45%); }
-  .btn-secondary { background: var(--muted); color: var(--fg); border: 1px solid var(--border); }
-  .btn-secondary:hover { background: var(--border); }
-  .btn-ghost { background: transparent; color: var(--muted-fg); border: 1px solid var(--border); }
-  .btn-ghost:hover { background: var(--muted); color: var(--fg); }
-  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-  /* ===== CONTENT ===== */
-  .content {
-    flex: 1;
-    padding: 2rem;
-    max-width: 1200px;
-    width: 100%;
-  }
-
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  .page-header { margin-bottom: 1.75rem; }
-  .page-title { font-size: 1.6rem; font-weight: 700; color: var(--fg); margin-bottom: 0.3rem; }
-  .page-sub { font-size: 0.875rem; color: var(--muted-fg); }
-
-  /* ===== CARDS ===== */
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1.25rem;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  }
-  .card-title {
-    font-family: var(--font-heading);
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: var(--fg);
-    margin-bottom: 1rem;
-  }
-  .card-sub { font-size: 0.8rem; color: var(--muted-fg); margin-bottom: 1rem; }
-
-  /* ===== KPI CARDS ===== */
-  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 1rem; margin-bottom: 1.25rem; }
-
-  .kpi-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.4rem 1.5rem 1.2rem;
-    position: relative;
-    overflow: hidden;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-    transition: box-shadow 0.2s, transform 0.2s;
-  }
-  .kpi-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-1px); }
-  .kpi-card-top {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 1rem;
-  }
-  .kpi-icon {
-    width: 44px; height: 44px;
-    border-radius: 50%;
-    background: var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem;
-    flex-shrink: 0;
-  }
-  .kpi-badge {
-    font-size: 0.72rem; font-weight: 700;
-    padding: 0.2rem 0.5rem;
-    border-radius: 999px;
-    background: rgba(22,163,74,0.12); color: #16a34a;
-    white-space: nowrap;
-    align-self: flex-start;
-  }
-  .kpi-badge.neg { background: rgba(220,38,38,0.12); color: #dc2626; }
-  .kpi-value { font-family: var(--font-heading); font-size: 1.9rem; font-weight: 700; color: var(--fg); line-height: 1; margin-bottom: 0.35rem; }
-  .kpi-label { font-size: 0.8rem; color: var(--muted-fg); }
-
-  /* ===== GRID ===== */
-  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
-  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
-  @media(max-width:900px) { .grid-2,.grid-3 { grid-template-columns: 1fr; } }
-
-  /* ===== TABLE ===== */
-  table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-  th {
-    text-align: left; padding: 0.5rem 0.75rem;
-    font-size: 0.72rem; font-weight: 600; letter-spacing: 0.5px;
-    text-transform: uppercase; color: var(--muted-fg);
-    border-bottom: 1px solid var(--border);
-  }
-  td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--muted); }
-
-  /* ===== UPLOAD ZONE ===== */
-  .upload-zone {
-    border: 2px dashed var(--primary);
-    border-radius: var(--radius);
-    padding: 2.5rem;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: var(--accent);
-  }
-  .upload-zone:hover { background: hsl(25,95%,92%); }
-  .upload-zone input { display: none; }
-  .upload-icon-wrap {
-    width: 56px; height: 56px;
-    background: var(--primary);
-    border-radius: 14px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.5rem;
-    margin: 0 auto 1rem;
-  }
-  .upload-title { font-family: var(--font-heading); font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
-  .upload-sub { font-size: 0.78rem; color: var(--muted-fg); }
-
-  /* ===== PILL / BADGE ===== */
-  .pill {
-    display: inline-flex; align-items: center;
-    padding: 0.15rem 0.55rem;
-    border-radius: 999px;
-    font-size: 0.7rem; font-weight: 600;
-  }
-  .pill-green { background: rgba(45,185,90,0.12); color: #16a34a; }
-  .pill-orange { background: rgba(249,115,22,0.12); color: #ea580c; }
-  .pill-red { background: rgba(239,68,68,0.12); color: #dc2626; }
-  .pill-blue { background: rgba(59,130,246,0.12); color: #2563eb; }
-
-  .insight-tag {
-    display: inline-block;
-    background: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-size: 0.72rem;
-    padding: 0.15rem 0.5rem;
-    margin: 0.15rem;
-    color: var(--fg);
-  }
-
-  /* ===== ALERT ===== */
-  .alert {
-    padding: 0.85rem 1rem;
-    border-radius: calc(var(--radius) - 2px);
-    font-size: 0.83rem;
-    line-height: 1.5;
-    margin-bottom: 0.75rem;
-  }
-  .alert-info { background: hsl(217,91%,97%); border-left: 3px solid hsl(217,91%,60%); color: hsl(217,50%,30%); }
-  .alert-success { background: rgba(45,185,90,0.08); border-left: 3px solid var(--success); color: hsl(142,50%,25%); }
-  .alert-warning { background: hsl(38,92%,96%); border-left: 3px solid var(--warning); color: hsl(38,60%,25%); }
-  .alert-orange { background: var(--accent); border-left: 3px solid var(--primary); color: var(--accent-fg); }
-
-  /* ===== PROGRESS ===== */
-  .progress-bar { background: var(--muted); border-radius: 999px; height: 6px; overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 999px; background: var(--primary); transition: width 0.6s ease; }
-
-  /* ===== EMPTY STATE ===== */
-  .empty-state {
-    display: flex; flex-direction: column; align-items: center;
-    padding: 4rem 2rem; text-align: center; color: var(--muted-fg);
-  }
-  .empty-icon { font-size: 2.5rem; margin-bottom: 1rem; }
-
-  /* ===== SPINNER ===== */
-  .spinner {
-    display: inline-block;
-    width: 16px; height: 16px;
-    border: 2px solid var(--border);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    vertical-align: middle;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ===== FORM ===== */
-  label { font-size: 0.78rem; font-weight: 500; color: var(--muted-fg); display: block; margin-bottom: 0.35rem; }
-  input[type=text], input[type=password], input[type=number], textarea, select {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 4px);
-    padding: 0.6rem 0.85rem;
-    font-size: 0.85rem;
-    font-family: var(--font-body);
-    color: var(--fg);
-    background: var(--card);
-    outline: none;
-    transition: border-color 0.15s;
-  }
-  input:focus, textarea:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px hsl(25,95%,93%); }
-  textarea { resize: vertical; min-height: 100px; }
-  .form-row { margin-bottom: 1rem; }
-  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-
-  /* ===== OUTPUT BOX ===== */
-  .output-box {
-    position: relative;
-    background: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 2px);
-    padding: 1rem;
-    font-size: 0.85rem;
-    line-height: 1.7;
-    white-space: pre-wrap;
-  }
-  .copy-btn {
-    position: absolute; top: 0.5rem; right: 0.5rem;
-    background: var(--card); border: 1px solid var(--border);
-    border-radius: 6px; padding: 0.25rem 0.6rem;
-    font-size: 0.7rem; cursor: pointer; color: var(--muted-fg);
-  }
-  .copy-btn:hover { color: var(--fg); }
-
-  /* ===== COMPETITOR CARD ===== */
-  .competitor-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
-  }
-  .competitor-rank { font-size: 0.65rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--primary); margin-bottom: 0.3rem; }
-  .competitor-name { font-family: var(--font-heading); font-size: 1rem; font-weight: 600; margin-bottom: 0.2rem; }
-  .competitor-meta { font-size: 0.75rem; color: var(--muted-fg); margin-bottom: 0.85rem; }
-
-  /* ===== SCORE RING ===== */
-  .score-ring { text-align: center; padding: 1.5rem 0; }
-  .score-number { font-family: var(--font-heading); font-size: 4rem; font-weight: 700; line-height: 1; }
-  .score-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 0.25rem; }
-
-  /* ===== FADE IN ===== */
-  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
-  .fade-in { animation: fadeIn 0.35s ease forwards; }
-
-  /* ===== KPI TILE (for analyse tab) ===== */
-  .kpi-tile {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 1.1rem 1.25rem;
-    border-top: 3px solid var(--accent-color, var(--primary));
-  }
-  .kpi-tile .kpi-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted-fg); margin-bottom: 0.4rem; }
-  .kpi-tile .kpi-value { font-family: var(--font-heading); font-size: 1.6rem; font-weight: 700; color: var(--fg); margin-bottom: 0.2rem; }
-  .kpi-tile .kpi-sub { font-size: 0.75rem; color: var(--muted-fg); }
-  .kpi-trend { font-size: 0.72rem; font-weight: 600; margin-top: 0.35rem; }
-  .trend-up { color: var(--success); }
-  .trend-down { color: var(--danger); }
-
-  /* ===== DIVIDER ===== */
-  hr.divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
-  .mt-2 { margin-top: 1rem; }
-  .mt-3 { margin-top: 1.5rem; }
-  .flex { display: flex; }
-  .gap-1 { gap: 0.5rem; }
-
-  /* ===== CHART BAR ===== */
-  .chart-bars { display:flex; align-items:flex-end; gap:3px; height:100px; }
-  .chart-bar-col { display:flex; flex-direction:column; align-items:center; flex:1; min-width:0; }
-  .chart-bar-fill { width:100%; background:var(--primary); border-radius:3px 3px 0 0; opacity:0.85; transition:opacity 0.2s; cursor:pointer; }
-  .chart-bar-fill:hover { opacity:1; }
-  .chart-bar-label { font-size:0.5rem; color:var(--muted-fg); margin-top:3px; transform:rotate(-45deg); transform-origin:top center; white-space:nowrap; }
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .kpi-icon { width: 36px; height: 36px; font-size: 1rem; }
+  .kpi-value { font-size: 1.25rem; }
+  .topbar-actions .btn:not(.btn-primary) { display: none; }
+}
 </style>
 </head>
 <body>
 
-<!-- ===== SIDEBAR ===== -->
-<aside class="sidebar">
-  <div class="sidebar-logo">
-    <div class="logo-icon">W</div>
-    <div class="logo-text">
-      <div class="logo-name">TheWootz</div>
-      <div class="logo-sub">bol.com optimizer</div>
-    </div>
-  </div>
-
-  <div class="sidebar-conn">
-    <button class="conn-btn" id="connBtn" onclick="showCredentialsPopup()">
-      <span class="conn-dot" id="connDot"></span>
-      <span id="connStatus">Niet verbonden</span>
-    </button>
-  </div>
-
-  <div class="sidebar-section-label">Tools</div>
-
-  <nav id="sideNav">
-    <div class="nav-item" data-tab="dashboard">
-      <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      Sales Dashboard
-    </div>
-    <div class="nav-item active" data-tab="analyse">
-      <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      Advertentie Analyse
-    </div>
-    <div class="nav-item" data-tab="scorer">
-      <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-      Tekst Scorer
-    </div>
-    <div class="nav-item" data-tab="generator">
-      <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-      Tekst Generator
-    </div>
-    <div class="nav-item" data-tab="concurrent">
-      <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-      Concurrentie Analyse
-    </div>
-  </nav>
-
-  <div class="sidebar-footer">BETA · TheWootz © 2026</div>
-</aside>
-
-<!-- ===== MAIN ===== -->
-<div class="main-wrap">
-
-  <!-- TOPBAR -->
-  <header class="topbar">
-    <div class="live-pill" id="livePill" style="display:none;">
-      <span class="live-dot"></span> LIVE
-    </div>
-    <span style="font-size:0.8rem;color:var(--muted-fg);">Periode:</span>
-    <div class="period-group">
-      <input type="date" id="startDate" />
-      <span style="color:var(--muted-fg);">tot</span>
-      <input type="date" id="endDate" />
-    </div>
-    <div class="topbar-right">
-      <button class="btn btn-ghost" id="refreshBtn" style="display:none;" onclick="loadLiveData();loadDashboard();">↻ Ververs</button>
-      <button class="btn btn-ghost" id="disconnectBtn" style="display:none;" onclick="disconnectAPI()">Wissel account</button>
-      <button class="btn btn-primary" id="koppelBtn" onclick="showCredentialsPopup()">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-        Koppel bol.com
-      </button>
-    </div>
-  </header>
-
-  <!-- CONTENT -->
-  <div class="content">
-
-    <!-- ======= TAB: SALES DASHBOARD ======= -->
-    <div class="tab-panel" id="tab-dashboard">
-      <div class="page-header">
-        <h1 class="page-title">Sales Dashboard</h1>
-        <p class="page-sub">Live omzet en bestellingen rechtstreeks uit je bol.com account.</p>
-      </div>
-
-      <div id="dashboardNotConnected" style="display:none;">
-        <div class="empty-state">
-          <div class="empty-icon">🔌</div>
-          <p style="margin-bottom:1rem;">Verbind je bol.com account om live data te zien.</p>
-          <button class="btn btn-primary" onclick="showCredentialsPopup()">🔗 Koppel bol.com</button>
-        </div>
-      </div>
-
-      <div id="dashboardLoading" style="display:none;">
-        <div class="empty-state">
-          <span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span>
-          <p style="margin-top:1rem;color:var(--muted-fg);">Bestellingen ophalen van bol.com...</p>
-        </div>
-      </div>
-
-      <div id="dashboardError" style="display:none;">
-        <div class="empty-state">
-          <div class="empty-icon">⚠️</div>
-          <p id="dashboardErrorMsg" style="color:var(--danger);font-weight:600;"></p>
-          <p id="dashboardErrorDetail" style="font-size:0.8rem;color:var(--muted-fg);margin-top:0.5rem;"></p>
-        </div>
-      </div>
-
-      <div id="dashboardContent" style="display:none;" class="fade-in">
-        <!-- KPIs -->
-        <div class="kpi-grid" id="kpiGrid4">
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <div class="kpi-icon">💶</div>
-              <span class="kpi-badge" id="kpiBadgeOmzet">—</span>
-            </div>
-            <div class="kpi-value" id="kpiOmzet">€0</div>
-            <div class="kpi-label">Totale omzet</div>
-            <div style="font-size:0.72rem;color:var(--muted-fg);margin-top:0.2rem;" id="kpiPeriode"></div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <div class="kpi-icon">🛒</div>
-              <span class="kpi-badge" id="kpiBadgeBestellingen">—</span>
-            </div>
-            <div class="kpi-value" id="kpiBestellingen">0</div>
-            <div class="kpi-label">Bestellingen</div>
-            <div style="font-size:0.72rem;color:var(--muted-fg);margin-top:0.2rem;">in de geselecteerde periode</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <div class="kpi-icon">📦</div>
-              <span class="kpi-badge neg" id="kpiBadgeGem">—</span>
-            </div>
-            <div class="kpi-value" id="kpiGem">€0</div>
-            <div class="kpi-label">Gem. orderwaarde</div>
-            <div style="font-size:0.72rem;color:var(--muted-fg);margin-top:0.2rem;">per bestelling</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <div class="kpi-icon">📈</div>
-              <span class="kpi-badge" id="kpiBadgePerDag">—</span>
-            </div>
-            <div class="kpi-value" id="kpiPerDag">€0</div>
-            <div class="kpi-label">Gem. per dag</div>
-            <div style="font-size:0.72rem;color:var(--muted-fg);margin-top:0.2rem;">dagelijkse omzet</div>
-          </div>
-        </div>
-
-        <!-- Top producten + Conversie tips -->
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-title">🏆 Top producten</div>
-            <div id="topProductenTable"></div>
-          </div>
-          <div class="card">
-            <div class="card-title">💡 Conversie tips</div>
-            <div id="conversieTips"></div>
-          </div>
-        </div>
-
-        <!-- Omzet per dag -->
-        <div class="card">
-          <div class="card-title">📈 Omzet per dag</div>
-          <div id="omzetPerDagChart" style="overflow-x:auto;"></div>
-        </div>
-
-        <!-- Actiepunten -->
-        <div class="card" id="actiepuntenCard" style="display:none;background:linear-gradient(135deg,hsl(25,95%,98%),hsl(25,95%,96%));border-color:hsl(25,95%,85%);">
-          <div class="card-title">🎯 Concrete actiepunten</div>
-          <div id="actiepunten" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;"></div>
-        </div>
+<!-- ═══════════════════════════════════════════════════════
+     AUTH SCREEN
+════════════════════════════════════════════════════════ -->
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">W</div>
+      <div>
+        <div class="auth-logo-name">TheWootz</div>
+        <div class="auth-logo-sub">bol.com optimizer</div>
       </div>
     </div>
 
-    <!-- ======= TAB: ADVERTENTIE ANALYSE ======= -->
-    <div class="tab-panel active" id="tab-analyse">
-      <div class="page-header">
-        <h1 class="page-title">Advertentie Analyse</h1>
-        <p class="page-sub">Upload je bol.com advertentie-rapportage en ontdek direct wat je conversie saboteert.</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">Inloggen</button>
+      <button class="auth-tab" id="tabRegister" onclick="showAuthTab('register')">Account aanmaken</button>
+    </div>
+
+    <!-- Login form -->
+    <div id="loginForm">
+      <div id="loginError" class="auth-error"></div>
+      <div class="form-group">
+        <label class="form-label">E-mailadres</label>
+        <input type="email" class="form-input" id="loginEmail" placeholder="jouw@email.nl" autocomplete="email">
       </div>
-
-      <div class="grid-2" style="align-items:start;">
-        <!-- Upload -->
-        <div>
-          <div class="card">
-            <div class="card-title">Advertentie Analyse</div>
-            <p class="card-sub">Upload je bol.com advertentie-rapportage (CSV of Excel) en ontdek direct wat je conversie saboteert.</p>
-            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('csvInput').click()">
-              <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" onchange="handleFileUpload(event)">
-              <div class="upload-icon-wrap">📤</div>
-              <div class="upload-title">Sleep je CSV hier naartoe</div>
-              <div class="upload-sub">of klik om te bladeren · CSV, XLSX · max 10MB</div>
-            </div>
-            <div class="alert alert-orange" style="margin-top:1rem;font-size:0.78rem;">
-              💡 Exporteer je rapportage via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV
-            </div>
-          </div>
-          <div id="kpiGrid" style="margin-top:0;"></div>
-          <div class="grid-2" id="topWorstGrid" style="display:none;">
-            <div class="card">
-              <div class="card-title">🏆 Top Converterend</div>
-              <div id="topConverters"></div>
-            </div>
-            <div class="card">
-              <div class="card-title">⚠️ Onderpresteerders</div>
-              <div id="worstPerformers"></div>
-            </div>
-          </div>
-          <div id="recommendations"></div>
-        </div>
-
-        <!-- Alle producten tabel -->
-        <div class="card" id="allProductsCard">
-          <div class="card-title">Alle Producten</div>
-          <div class="card-sub">Overzicht van je advertentie prestaties</div>
-          <div id="analysePlaceholder">
-            <div class="empty-state" style="padding:3rem 1rem;">
-              <div class="empty-icon">📂</div>
-              <p>Upload een CSV om data te zien</p>
-              <button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
-            </div>
-          </div>
-          <div id="analyseResults" style="display:none;">
-            <div style="overflow-x:auto;">
-              <table id="fullTable">
-                <thead><tr></tr></thead>
-                <tbody id="fullTableBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      <div class="form-group">
+        <label class="form-label">Wachtwoord</label>
+        <input type="password" class="form-input" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary btn-full" id="loginBtn" onclick="handleLogin()">Inloggen</button>
+      <div style="text-align:center;margin-top:1rem;">
+        <button onclick="showAuthTab('register')" style="background:none;border:none;color:var(--primary);font-size:0.8rem;cursor:pointer;">
+          Nog geen account? Aanmaken →
+        </button>
       </div>
     </div>
 
-    <!-- ======= TAB: TEKST SCORER ======= -->
-    <div class="tab-panel" id="tab-scorer">
-      <div class="page-header">
-        <h1 class="page-title">Tekst Scorer</h1>
-        <p class="page-sub">Analyseer hoe goed je bol.com producttekst converteert.</p>
+    <!-- Register form -->
+    <div id="registerForm" style="display:none;">
+      <div id="registerError"   class="auth-error"></div>
+      <div id="registerSuccess" class="auth-success"></div>
+      <div class="form-group">
+        <label class="form-label">Volledige naam</label>
+        <input type="text" class="form-input" id="regName" placeholder="Jan de Vries" autocomplete="name">
       </div>
-      <div class="grid-2" style="align-items:start;">
-        <div class="card">
-          <div class="card-title">Jouw producttekst</div>
-          <div class="form-row">
-            <label>Bol.com product URL (optioneel)</label>
-            <div style="display:flex;gap:0.5rem;">
-              <input type="text" id="scorerBolUrl" placeholder="https://www.bol.com/nl/nl/p/...">
-              <button class="btn btn-ghost" id="scorerFetchBtn" onclick="fetchBolProduct('scorer')" style="white-space:nowrap;">📥 Importeer</button>
-            </div>
-            <div id="scorerFetchStatus" style="display:none;font-size:0.75rem;margin-top:0.3rem;"></div>
-          </div>
-          <div class="form-row">
-            <label>Producttitel</label>
-            <input type="text" id="scorerTitle" placeholder="Bijv: Houten Snijplank Eiken 40x30cm met Sapgeul...">
-          </div>
-          <div class="form-row">
-            <label>Beschrijving</label>
-            <textarea id="scorerDesc" rows="5" placeholder="Plak hier je productbeschrijving..."></textarea>
-          </div>
-          <div class="form-row">
-            <label>Bullet points</label>
-            <textarea id="scorerBullets" rows="4" placeholder="• Kenmerk 1&#10;• Kenmerk 2&#10;• Kenmerk 3"></textarea>
-          </div>
-          <button class="btn btn-primary" style="width:100%;" id="scoreBtn" onclick="scoreText()">🎯 Analyseer tekst</button>
-        </div>
-        <div id="scoreResults">
-          <div class="empty-state">
-            <div class="empty-icon">🎯</div>
-            <p>Vul je producttekst in en klik op Analyseer</p>
-          </div>
-        </div>
+      <div class="form-group">
+        <label class="form-label">E-mailadres</label>
+        <input type="email" class="form-input" id="regEmail" placeholder="jouw@email.nl" autocomplete="email">
       </div>
-    </div>
-
-    <!-- ======= TAB: TEKST GENERATOR ======= -->
-    <div class="tab-panel" id="tab-generator">
-      <div class="page-header">
-        <h1 class="page-title">Tekst Generator</h1>
-        <p class="page-sub">Genereer hoog-converterende bol.com productteksten met AI.</p>
+      <div class="form-group">
+        <label class="form-label">Wachtwoord (min. 8 tekens)</label>
+        <input type="password" class="form-input" id="regPassword" placeholder="••••••••" autocomplete="new-password">
       </div>
-      <div class="grid-2" style="align-items:start;">
-        <div class="card">
-          <div class="card-title">Product details</div>
-          <div class="form-row">
-            <label>Bol.com product URL (optioneel)</label>
-            <div style="display:flex;gap:0.5rem;">
-              <input type="text" id="genBolUrl" placeholder="https://www.bol.com/nl/nl/p/...">
-              <button class="btn btn-ghost" id="genFetchBtn" onclick="fetchBolProduct('generator')" style="white-space:nowrap;">📥 Importeer</button>
-            </div>
-            <div id="genFetchStatus" style="display:none;font-size:0.75rem;margin-top:0.3rem;"></div>
-          </div>
-          <div class="form-grid">
-            <div class="form-row">
-              <label>Houtsoort</label>
-              <select id="genHoutsoort">
-                <option>Eikenhout</option><option>Walnoothout</option><option>Acaciahout</option>
-                <option>Bamboehout</option><option>Olijfhout</option><option>Kersenhout</option><option>Anders</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Afmeting</label>
-              <input type="text" id="genAfmeting" placeholder="Bijv: 40x30x2cm">
-            </div>
-            <div class="form-row">
-              <label>Doelgroep</label>
-              <select id="genDoelgroep">
-                <option>Thuiskoks & foodliefhebbers</option><option>Cadeau kopers</option>
-                <option>Professionele chefs</option><option>Interieurliefhebbers</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label>Toon</label>
-              <select id="genToon">
-                <option>Warm & persoonlijk</option><option>Professioneel & zakelijk</option>
-                <option>Speels & creatief</option><option>Luxe & premium</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <label>Verkoopprijs (€)</label>
-            <input type="number" id="genPrijs" placeholder="Bijv: 49.95">
-          </div>
-          <div class="form-row">
-            <label>Kenmerken & USP's</label>
-            <textarea id="genFeatures" rows="4" placeholder="Bijv: sapgeul, anti-slip poten, voedselveilig behandeld, cadeau-verpakking..."></textarea>
-          </div>
-          <button class="btn btn-primary" style="width:100%;" id="genBtn" onclick="generateText()">✨ Genereer geoptimaliseerde tekst</button>
-        </div>
-        <div id="genOutput">
-          <div class="empty-state">
-            <div class="empty-icon">✨</div>
-            <p>Vul de productdetails in en klik op Genereer</p>
-          </div>
-        </div>
+      <button class="btn btn-primary btn-full" id="registerBtn" onclick="handleRegister()">Account aanmaken</button>
+      <div style="text-align:center;margin-top:1rem;">
+        <button onclick="showAuthTab('login')" style="background:none;border:none;color:var(--primary);font-size:0.8rem;cursor:pointer;">
+          ← Terug naar inloggen
+        </button>
       </div>
-    </div>
-
-    <!-- ======= TAB: CONCURRENTIE ANALYSE ======= -->
-    <div class="tab-panel" id="tab-concurrent">
-      <div class="page-header">
-        <h1 class="page-title">Concurrentie Analyse</h1>
-        <p class="page-sub">Analyseer wat de topverkopers doen en hoe jij je kunt onderscheiden.</p>
-      </div>
-      <div class="card" style="max-width:600px;">
-        <div class="card-title">Zoekterm & segment</div>
-        <div class="form-grid">
-          <div class="form-row">
-            <label>Zoekterm op bol.com</label>
-            <input type="text" id="concSearchTerm" placeholder="Bijv: houten snijplank" value="houten snijplank">
-          </div>
-          <div class="form-row">
-            <label>Prijssegment</label>
-            <select id="concSegment">
-              <option>Budget (€0-€25)</option><option selected>Mid-range (€25-€60)</option>
-              <option>Premium (€60+)</option><option>Cadeau / personaliseerbaar</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary" onclick="analyzeCompetitors()" id="concBtn">🔍 Analyseer concurrenten</button>
-      </div>
-      <div id="concResults" style="display:none;"></div>
-      <div id="concPlaceholder">
-        <div class="empty-state">
-          <div class="empty-icon">🔍</div>
-          <p>Klik op Analyseer om inzichten te laden</p>
-        </div>
-      </div>
-    </div>
-
-  </div><!-- /content -->
-</div><!-- /main-wrap -->
-
-
-<!-- ===== CREDENTIALS POPUP ===== -->
-<div id="credPopup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;backdrop-filter:blur(4px);">
-  <div style="background:var(--card);border-radius:var(--radius);padding:2rem;width:460px;max-width:90vw;border:1px solid var(--border);box-shadow:0 20px 60px rgba(0,0,0,0.15);">
-    <div style="font-family:var(--font-heading);font-size:1.3rem;font-weight:700;margin-bottom:0.4rem;">🔐 Bol.com koppelen</div>
-    <div style="font-size:0.82rem;color:var(--muted-fg);margin-bottom:1.5rem;line-height:1.6;">Vul je bol.com API credentials in. Deze worden alleen lokaal in je browser bewaard.</div>
-    <div class="form-row">
-      <label>Client ID</label>
-      <input type="text" id="popupClientId" placeholder="Jouw bol.com Client ID">
-    </div>
-    <div class="form-row">
-      <label>Client Secret</label>
-      <input type="password" id="popupClientSecret" placeholder="Jouw bol.com Client Secret">
-    </div>
-    <div class="alert alert-info" style="font-size:0.75rem;margin-bottom:1.25rem;">
-      📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
-    </div>
-    <div style="display:flex;gap:0.75rem;">
-      <button class="btn btn-primary" style="flex:1;" onclick="submitCredentials()">🔌 Verbinden</button>
-      <button class="btn btn-ghost" onclick="hideCredentialsPopup()">Annuleer</button>
-    </div>
-    <div style="margin-top:0.85rem;text-align:center;">
-      <button onclick="loadDemoMode();hideCredentialsPopup();" style="background:none;border:none;color:var(--primary);font-size:0.78rem;cursor:pointer;text-decoration:underline;">Of gebruik demo data →</button>
     </div>
   </div>
 </div>
 
-<script>
-// ===================================================
-// SETUP
-// ===================================================
-const BACKEND_URL = 'https://thewootz-api.vercel.app';
-let apiToken = null;
-let tokenExpiry = 0;
+<!-- ═══════════════════════════════════════════════════════
+     APP SCREEN
+════════════════════════════════════════════════════════ -->
+<div id="appScreen">
 
-const _today = new Date();
-const _thirtyAgo = new Date(_today - 30*86400000);
-document.getElementById('endDate').value = _today.toISOString().split('T')[0];
-document.getElementById('startDate').value = _thirtyAgo.toISOString().split('T')[0];
+  <!-- Mobile hamburger -->
+  <button class="hamburger" id="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+      <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+    </svg>
+  </button>
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-window.addEventListener('load', () => {
-  const c = getStoredCreds();
-  if (c.clientId && c.clientSecret) fetchToken();
-});
-
-function getStoredCreds() {
-  return { clientId: sessionStorage.getItem('bol_client_id')||'', clientSecret: sessionStorage.getItem('bol_client_secret')||'' };
-}
-
-// ===================================================
-// NAV
-// ===================================================
-document.querySelectorAll('#sideNav .nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    document.querySelectorAll('#sideNav .nav-item').forEach(i => i.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    item.classList.add('active');
-    document.getElementById('tab-' + item.dataset.tab).classList.add('active');
-    if (item.dataset.tab === 'dashboard' && document.getElementById('dashboardContent').style.display === 'none') {
-      loadDashboard();
-    }
-  });
-});
-
-// Drag & drop
-const uploadZone = document.getElementById('uploadZone');
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.background='hsl(25,95%,90%)'; });
-uploadZone.addEventListener('dragleave', () => uploadZone.style.background='');
-uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.style.background=''; if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
-
-// ===================================================
-// CONNECTION
-// ===================================================
-function setConnStatus(msg, type) {
-  document.getElementById('connStatus').textContent = msg;
-  const btn = document.getElementById('connBtn');
-  const dot = document.getElementById('connDot');
-  if (type === 'ok') {
-    btn.classList.add('connected');
-    dot.classList.add('live');
-    document.getElementById('livePill').style.display = 'flex';
-  } else {
-    btn.classList.remove('connected');
-    dot.classList.remove('live');
-    document.getElementById('livePill').style.display = 'none';
-  }
-}
-
-function showCredentialsPopup() { document.getElementById('credPopup').style.display='flex'; }
-function hideCredentialsPopup() { document.getElementById('credPopup').style.display='none'; }
-
-function disconnectAPI() {
-  sessionStorage.removeItem('bol_client_id'); sessionStorage.removeItem('bol_client_secret');
-  apiToken = null;
-  setConnStatus('Niet verbonden','idle');
-  document.getElementById('koppelBtn').style.display='inline-flex';
-  document.getElementById('disconnectBtn').style.display='none';
-  document.getElementById('refreshBtn').style.display='none';
-}
-
-function submitCredentials() {
-  const id = document.getElementById('popupClientId').value.trim();
-  const secret = document.getElementById('popupClientSecret').value.trim();
-  if (!id||!secret) { alert('Vul beide velden in.'); return; }
-  sessionStorage.setItem('bol_client_id', id);
-  sessionStorage.setItem('bol_client_secret', secret);
-  hideCredentialsPopup();
-  fetchToken();
-}
-
-async function ensureToken() {
-  if (!apiToken || Date.now() > tokenExpiry) await fetchToken();
-  return apiToken;
-}
-
-async function fetchToken() {
-  setConnStatus('Verbinden...','idle');
-  const c = getStoredCreds();
-  try {
-    const res = await fetch(BACKEND_URL+'/api/token', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({clientId:c.clientId, clientSecret:c.clientSecret})
-    });
-    if (!res.ok) { setConnStatus('Ongeldige gegevens','err'); return false; }
-    const data = await res.json();
-    apiToken = data.access_token;
-    tokenExpiry = Date.now() + (data.expires_in-30)*1000;
-    setConnStatus('Verbonden','ok');
-    document.getElementById('koppelBtn').style.display='none';
-    document.getElementById('disconnectBtn').style.display='inline-flex';
-    document.getElementById('refreshBtn').style.display='inline-flex';
-    loadLiveData();
-    loadDashboard();
-    return true;
-  } catch(e) { setConnStatus('Verbinding mislukt','err'); return false; }
-}
-
-async function loadLiveData() {
-  const token = await ensureToken();
-  if (!token) return;
-  const start = document.getElementById('startDate').value;
-  const end = document.getElementById('endDate').value;
-  document.getElementById('analysePlaceholder').innerHTML = `<div class="empty-state"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span><p style="margin-top:1rem;color:var(--muted-fg);">Campagne data ophalen...</p></div>`;
-  try {
-    const res = await fetch(BACKEND_URL+'/api/campaigns?startDate='+start+'&endDate='+end, { headers: {'Authorization':'Bearer '+token} });
-    const data = await res.json();
-    if (!res.ok) {
-      document.getElementById('analysePlaceholder').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><p style="color:var(--danger);font-weight:600;">${data.error||'API fout '+res.status}</p><p style="font-size:0.8rem;color:var(--muted-fg);margin-top:0.5rem;">${data.hint||data.detail||''}</p><button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Demo data</button></div>`;
-      return;
-    }
-    if (data.campagnes && data.campagnes.length > 0) renderAnalyse(data.campagnes, true);
-    else document.getElementById('analysePlaceholder').innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div><p>Geen campagnes gevonden voor deze periode</p><button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Demo data</button></div>`;
-  } catch(e) {
-    document.getElementById('analysePlaceholder').innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p style="color:var(--danger);">Verbinding mislukt</p><button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Demo data</button></div>`;
-  }
-}
-
-// ===================================================
-// SALES DASHBOARD
-// ===================================================
-let dashboardLoading = false;
-async function loadDashboard() {
-  if (dashboardLoading) return;
-  dashboardLoading = true;
-  const token = await ensureToken();
-  if (!token) {
-    document.getElementById('dashboardNotConnected').style.display = 'block';
-    document.getElementById('dashboardLoading').style.display = 'none';
-    dashboardLoading = false;
-    return;
-  }
-  document.getElementById('dashboardNotConnected').style.display = 'none';
-  document.getElementById('dashboardError').style.display = 'none';
-  document.getElementById('dashboardContent').style.display = 'none';
-  document.getElementById('dashboardLoading').style.display = 'block';
-  const start = document.getElementById('startDate').value;
-  const end = document.getElementById('endDate').value;
-  try {
-    const res = await fetch(BACKEND_URL + '/api/orders?startDate=' + start + '&endDate=' + end, { headers: { 'Authorization': 'Bearer ' + token } });
-    const data = await res.json();
-    document.getElementById('dashboardLoading').style.display = 'none';
-    if (!res.ok) {
-      document.getElementById('dashboardErrorMsg').textContent = data.error || 'Fout bij ophalen data';
-      document.getElementById('dashboardErrorDetail').textContent = data.detail || '';
-      document.getElementById('dashboardError').style.display = 'block';
-      dashboardLoading = false;
-      return;
-    }
-    renderDashboard(data);
-    dashboardLoading = false;
-  } catch(e) {
-    document.getElementById('dashboardLoading').style.display = 'none';
-    document.getElementById('dashboardErrorMsg').textContent = 'Verbinding mislukt: ' + e.message;
-    document.getElementById('dashboardError').style.display = 'block';
-    dashboardLoading = false;
-  }
-}
-
-function renderDashboard(data) {
-  const s = data.samenvatting || {};
-  document.getElementById('dashboardContent').style.display = 'block';
-  const fmt = (n) => '€' + (n||0).toLocaleString('nl-NL', {minimumFractionDigits:2, maximumFractionDigits:2});
-  document.getElementById('kpiOmzet').textContent = fmt(s.totalOmzet);
-  document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen || 0).toLocaleString('nl-NL');
-  document.getElementById('kpiGem').textContent = fmt(s.gemOmzetPerBestelling);
-  document.getElementById('kpiPeriode').textContent = (s.periode?.start || '') + ' → ' + (s.periode?.end || '');
-  const perDagData = data.perDag || [];
-  const dagMetOmzet = perDagData.filter(d => d.omzet > 0);
-  const gemPerDag = dagMetOmzet.length > 0 ? (s.totalOmzet / dagMetOmzet.length) : 0;
-  document.getElementById('kpiPerDag').textContent = fmt(gemPerDag);
-
-  // KPI badges — show percentage vs prior period if available, else static hints
-  const setBadge = (id, pct, positive) => {
-    const el = document.getElementById(id);
-    if (pct === null) { el.textContent = '—'; return; }
-    const sign = pct >= 0 ? '+' : '';
-    el.textContent = sign + pct + '%';
-    el.className = 'kpi-badge' + (pct >= 0 ? '' : ' neg');
-  };
-  setBadge('kpiBadgeOmzet', s.totalBestellingen > 0 ? Math.round((dagMetOmzet.length / (perDagData.length||1))*100) : null);
-  setBadge('kpiBadgeBestellingen', s.totalBestellingen > 0 ? null : null);
-  setBadge('kpiBadgeGem', null);
-  setBadge('kpiBadgePerDag', null);
-
-  // Top producten
-  const prods = data.topProducten || [];
-  if (prods.length === 0) {
-    document.getElementById('topProductenTable').innerHTML = '<p style="color:var(--muted-fg);font-size:0.85rem;">Geen producten gevonden.</p>';
-  } else {
-    const maxOmzet = Math.max(...prods.map(p => p.omzet));
-    document.getElementById('topProductenTable').innerHTML = `
-      <table>
-        <thead><tr>
-          <th>#</th><th>Product</th><th style="text-align:right;">Stuks</th><th style="text-align:right;">Omzet</th>
-        </tr></thead>
-        <tbody>
-          ${prods.map((p,i) => `
-            <tr>
-              <td style="color:var(--muted-fg);font-size:0.72rem;">${i+1}</td>
-              <td>
-                <div style="font-weight:500;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.titel}">${p.titel}</div>
-                <div style="height:3px;background:var(--muted);border-radius:999px;margin-top:4px;"><div style="height:3px;border-radius:999px;background:var(--primary);width:${Math.round(p.omzet/maxOmzet*100)}%;"></div></div>
-              </td>
-              <td style="text-align:right;">${p.stuks}</td>
-              <td style="text-align:right;font-weight:600;color:var(--primary);">€${p.omzet.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-  }
-
-  // Conversie tips
-  const tips = [];
-  const gemWaarde = s.gemOmzetPerBestelling || 0;
-  const aantalDagen = perDagData.length || 1;
-  const actieveDagen = dagMetOmzet.length;
-  const inactivePct = Math.round((aantalDagen - actieveDagen) / aantalDagen * 100);
-  if (prods.length > 0) {
-    const top1aandeel = prods[0].omzet / (s.totalOmzet || 1) * 100;
-    if (top1aandeel > 70) tips.push({ icon:'⚠️', titel:'Productrisico', tekst:`${Math.round(top1aandeel)}% van omzet uit 1 product. Spreid je risico.` });
-    if (prods.length > 1) tips.push({ icon:'🔗', titel:'Cross-sell kans', tekst:`Bundel "${prods[0].titel.substring(0,25)}..." met andere producten voor hogere orderwaarde.` });
-  }
-  if (gemWaarde < 20) tips.push({ icon:'💶', titel:'Verhoog orderwaarde', tekst:`Gem. €${gemWaarde.toFixed(0)}. Bied gratis verzending boven €25 of bundels aan.` });
-  if (inactivePct > 40) tips.push({ icon:'📅', titel:'Onregelmatige verkoop', tekst:`${inactivePct}% van de dagen geen verkoop. Overweeg dagelijks adverteren.` });
-  tips.push({ icon:'⭐', titel:'Reviews zijn key', tekst:'Stuur na 7 dagen een review-verzoek via bol.com.' });
-  tips.push({ icon:'🔍', titel:'Zoekwoord optimalisatie', tekst:'Gebruik de Tekst Scorer om producttitels te checken op bol.com zoekwoorden.' });
-  tips.push({ icon:'📸', titel:'Meer afbeeldingen', tekst:'Producten met 5+ foto\'s converteren tot 40% beter.' });
-  document.getElementById('conversieTips').innerHTML = tips.slice(0,5).map(t => `
-    <div style="display:flex;gap:0.75rem;margin-bottom:0.85rem;padding-bottom:0.85rem;border-bottom:1px solid var(--border);">
-      <div style="font-size:1.1rem;flex-shrink:0;">${t.icon}</div>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">W</div>
       <div>
-        <div style="font-weight:600;font-size:0.82rem;margin-bottom:0.15rem;">${t.titel}</div>
-        <div style="font-size:0.78rem;color:var(--muted-fg);line-height:1.45;">${t.tekst}</div>
+        <div class="logo-name">TheWootz</div>
+        <div class="logo-sub">bol.com optimizer</div>
       </div>
-    </div>`).join('');
-
-  // Actiepunten
-  const acties = [
-    { kleur:'var(--primary)', icon:'🎯', titel:'Adverteer op je bestseller', actie:`Start een gesponsord product campagne voor "${(prods[0]?.titel||'je topseller').substring(0,35)}..." met €5-10/dag.`, impact:'Hoog' },
-    { kleur:'var(--success)', icon:'📝', titel:'Optimaliseer productteksten', actie:'Gebruik de Tekst Scorer voor je top 3 producten. Alles onder 70 punten heeft verbeterpotentieel.', impact:'Middel' },
-    { kleur:'hsl(217,91%,60%)', icon:'🏷️', titel:'Prijsstrategie herzien', actie:`Gem. orderwaarde €${gemWaarde.toFixed(0)}. Test gratis verzending boven €${Math.round(gemWaarde*1.3)}.`, impact:'Middel' },
-    { kleur:'hsl(280,70%,60%)', icon:'📦', titel:'Bundel populaire producten', actie: prods.length > 1 ? `Maak een bundel van "${(prods[0]?.titel||'').substring(0,20)}..." + "${(prods[1]?.titel||'').substring(0,20)}...".` : 'Voeg complementaire producten toe.', impact:'Hoog' }
-  ];
-  document.getElementById('actiepuntenCard').style.display = 'block';
-  document.getElementById('actiepunten').innerHTML = acties.map(a => `
-    <div style="background:var(--card);border-radius:calc(var(--radius) - 2px);padding:1rem;border-left:3px solid ${a.kleur};">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;">
-        <div style="font-weight:600;font-size:0.85rem;">${a.icon} ${a.titel}</div>
-        <span class="pill pill-${a.impact==='Hoog'?'orange':'blue'}" style="white-space:nowrap;">Impact: ${a.impact}</span>
-      </div>
-      <div style="font-size:0.78rem;color:var(--muted-fg);line-height:1.45;">${a.actie}</div>
-    </div>`).join('');
-
-  // Omzet per dag
-  const dagen = data.perDag || [];
-  if (dagen.length === 0) {
-    document.getElementById('omzetPerDagChart').innerHTML = '<p style="color:var(--muted-fg);font-size:0.85rem;">Geen dagdata beschikbaar.</p>';
-  } else {
-    const maxDagOmzet = Math.max(...dagen.map(d => d.omzet), 1);
-    document.getElementById('omzetPerDagChart').innerHTML = `
-      <div style="display:flex;align-items:flex-end;gap:4px;height:110px;padding-bottom:1.5rem;overflow-x:auto;">
-        ${dagen.map(d => `
-          <div class="chart-bar-col" title="${d.datum}: €${d.omzet.toLocaleString('nl-NL',{minimumFractionDigits:2})}">
-            <div class="chart-bar-fill" style="height:${Math.max(4,Math.round(d.omzet/maxDagOmzet*90))}px;"></div>
-            <div class="chart-bar-label">${d.datum.substring(5)}</div>
-          </div>`).join('')}
-      </div>`;
-  }
-}
-
-// ===================================================
-// ANALYSE TAB (CSV + demo data) — exactly preserved
-// ===================================================
-function handleFileUpload(e) { const file = e.target.files[0]; if (file) processFile(file); }
-function processFile(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const text = e.target.result;
-      const firstLine = text.split('\n')[0];
-      const delimiter = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ',';
-      function parseCSVLine(line, delim) {
-        const result = []; let current = ''; let inQuotes = false;
-        for (let i = 0; i < line.length; i++) {
-          const ch = line[i];
-          if (ch === '"') { if (inQuotes && line[i+1] === '"') { current += '"'; i++; } else inQuotes = !inQuotes; }
-          else if (ch === delim && !inQuotes) { result.push(current.trim()); current = ''; }
-          else current += ch;
-        }
-        result.push(current.trim()); return result;
-      }
-      const lines = text.split('\n').filter(r => r.trim());
-      if (lines.length < 2) { showDemoData(); return; }
-      const rawHeaders = parseCSVLine(lines[0], delimiter);
-      const headers = rawHeaders.map(h => h.replace(/['"]/g,'').trim().toLowerCase());
-      const rows = [];
-      for (let i = 1; i < lines.length; i++) {
-        const cols = parseCSVLine(lines[i], delimiter);
-        if (cols.length < 3) continue;
-        const row = {}; headers.forEach((h, idx) => row[h] = (cols[idx] || '').replace(/^["']|["']$/g,'').trim());
-        rows.push(row);
-      }
-      if (rows.length === 0) { showDemoData(); return; }
-      const isCampaignLevel = headers.some(h => h.includes('campaignname') || h.includes('campagnename') || h.includes('campaign'));
-      const parsed = isCampaignLevel ? parseCampaignData(rows) : parseBoLData(rows, headers);
-      if (parsed.length > 0) renderAnalyse(parsed, isCampaignLevel);
-      else showParseError(headers, rows[0]);
-    } catch(err) { showDemoData(); }
-  };
-  reader.readAsText(file, 'utf-8');
-}
-
-function parseCampaignData(rows) {
-  function parseNum(v) { if (!v || v === '' || v === '-') return 0; return parseFloat(String(v).replace(',','.')) || 0; }
-  const camps = {};
-  for (const r of rows) {
-    const name = r['campaignname'] || r['campagnename'] || r['campaign_name'] || r['campaign'] || 'Onbekend';
-    if (!camps[name]) camps[name] = { naam: name, vertoningen:0, kliks:0, bestellingen:0, kosten:0, omzet:0 };
-    camps[name].vertoningen += parseNum(r['impressions']);
-    camps[name].kliks += parseNum(r['clicks']);
-    camps[name].bestellingen += parseNum(r['conversions14d'] || r['conversions']);
-    camps[name].kosten += parseNum(r['cost'] || r['costs'] || r['kosten']);
-    camps[name].omzet += parseNum(r['sales14d'] || r['sales'] || r['revenue'] || r['omzet']);
-  }
-  return Object.values(camps).filter(c => c.vertoningen > 0 || c.kliks > 0 || c.kosten > 0);
-}
-
-function showParseError(headers, sampleRow) {
-  document.getElementById('analysePlaceholder').style.display = 'none';
-  document.getElementById('analyseResults').style.display = 'block';
-  document.getElementById('recommendations').innerHTML = `<div class="alert alert-warning">⚠️ <strong>Kolommen herkend maar kon data niet koppelen.</strong><br><br>Gevonden kolommen: ${headers.map(h => `<code style="background:var(--muted);padding:1px 5px;border-radius:3px;">${h}</code>`).join(' ')}<br><br><button class="btn btn-ghost" onclick="showDemoData()" style="margin-top:0.5rem;">📊 Laad demo data</button></div>`;
-}
-
-function parseBoLData(rawData, detectedHeaders) {
-  const COLUMN_MAP = {
-    naam: ['producttitel','product titel','productnaam','artikel','product','titel','name'],
-    vertoningen: ['aantal vertoningen','vertoningen','impressions','weergaven'],
-    kliks: ['aantal klikken','klikken','clicks','klik'],
-    bestellingen: ['aantal bestellingen','bestellingen','orders','conversies','sales'],
-    kosten: ['bestede kosten','kosten','costs','spend','cost'],
-    omzet: ['omzet','revenue','opbrengst','sales revenue']
-  };
-  function findColumn(row, candidates) {
-    const keys = Object.keys(row);
-    for (const c of candidates) { const e = keys.find(k => k === c); if (e !== undefined) return e; const s = keys.find(k => k.includes(c) || c.includes(k)); if (s !== undefined) return s; }
-    return null;
-  }
-  function parseNum(val) {
-    if (!val || val === '' || val === '-') return 0;
-    let c = String(val).replace(/[€\s]/g,'');
-    if (c.includes(',') && c.includes('.')) c = c.replace(/\./g,'').replace(',','.');
-    else if (c.includes(',')) c = c.replace(',','.');
-    return parseFloat(c) || 0;
-  }
-  const sampleRow = rawData[0]; const colKeys = {};
-  for (const [field, candidates] of Object.entries(COLUMN_MAP)) colKeys[field] = findColumn(sampleRow, candidates);
-  return rawData.map(row => ({
-    naam: colKeys['naam'] ? (row[colKeys['naam']] || 'Onbekend') : 'Onbekend',
-    vertoningen: colKeys['vertoningen'] ? parseNum(row[colKeys['vertoningen']]) : 0,
-    kliks: colKeys['kliks'] ? parseNum(row[colKeys['kliks']]) : 0,
-    bestellingen: colKeys['bestellingen'] ? parseNum(row[colKeys['bestellingen']]) : 0,
-    kosten: colKeys['kosten'] ? parseNum(row[colKeys['kosten']]) : 0,
-    omzet: colKeys['omzet'] ? parseNum(row[colKeys['omzet']]) : 0
-  })).filter(r => r.vertoningen > 0 || r.kliks > 0 || r.kosten > 0);
-}
-
-function showDemoData() {
-  const demo = [
-    {naam:'Eiken Snijplank 40x30cm', vertoningen:12400, kliks:248, bestellingen:6, kosten:89.20, omzet:299.70},
-    {naam:'Walnoot Snijplank met Sapgeul', vertoningen:8700, kliks:391, bestellingen:19, kosten:142.50, omzet:950.00},
-    {naam:'Bamboe Snijplank 3-delig Set', vertoningen:15200, kliks:182, bestellingen:2, kosten:67.80, omzet:49.90},
-    {naam:'Olijfhout Serveerplank', vertoningen:5600, kliks:280, bestellingen:14, kosten:98.00, omzet:700.00},
-    {naam:'Gepersonaliseerde Snijplank', vertoningen:9800, kliks:196, bestellingen:8, kosten:74.40, omzet:399.20},
-    {naam:'XL Snijplank met Handgrepen', vertoningen:4200, kliks:84, bestellingen:1, kosten:38.50, omzet:44.95},
-    {naam:'Acacia Snijplank Set 2-delig', vertoningen:7300, kliks:219, bestellingen:11, kosten:81.30, omzet:549.45},
-  ];
-  renderAnalyse(demo, false);
-}
-
-function renderAnalyse(data, isCampaignLevel) {
-  document.getElementById('analysePlaceholder').style.display = 'none';
-  document.getElementById('analyseResults').style.display = 'block';
-  document.getElementById('topWorstGrid').style.display = 'grid';
-  const entityLabel = isCampaignLevel ? 'Campagne' : 'Product';
-  data.forEach(r => {
-    r.ctr = r.vertoningen > 0 ? (r.kliks / r.vertoningen * 100) : 0;
-    r.conversie = r.kliks > 0 ? (r.bestellingen / r.kliks * 100) : 0;
-    r.roas = r.kosten > 0 ? (r.omzet / r.kosten) : 0;
-    r.cpc = r.kliks > 0 ? (r.kosten / r.kliks) : 0;
-  });
-  const totVertoningen = data.reduce((s,r) => s+r.vertoningen, 0);
-  const totKliks = data.reduce((s,r) => s+r.kliks, 0);
-  const totBestellingen = data.reduce((s,r) => s+r.bestellingen, 0);
-  const totKosten = data.reduce((s,r) => s+r.kosten, 0);
-  const totOmzet = data.reduce((s,r) => s+r.omzet, 0);
-  const avgConversie = totKliks > 0 ? (totBestellingen/totKliks*100) : 0;
-  const totRoas = totKosten > 0 ? (totOmzet/totKosten) : 0;
-  const BENCH_CONV = 7.4; const BENCH_ROAS = 4.0;
-
-  document.getElementById('kpiGrid').innerHTML = `
-    <div style="margin-bottom:1rem;font-size:0.72rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--muted-fg);">${isCampaignLevel?'CAMPAGNE':'PRODUCT'} RAPPORT · ${data.length} items</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.25rem;">
-      <div class="kpi-tile" style="--accent-color:var(--primary)"><div class="kpi-label">Totaal Kliks</div><div class="kpi-value">${totKliks.toLocaleString('nl')}</div><div class="kpi-sub">CTR: ${totVertoningen>0?(totKliks/totVertoningen*100).toFixed(1):0}%</div></div>
-      <div class="kpi-tile" style="--accent-color:${avgConversie<3?'var(--danger)':avgConversie<BENCH_CONV?'var(--warning)':'var(--success)'}"><div class="kpi-label">Gem. Conversie</div><div class="kpi-value">${avgConversie.toFixed(1)}%</div><div class="kpi-sub">${totBestellingen} conv.</div><div class="kpi-trend ${avgConversie>=BENCH_CONV?'trend-up':'trend-down'}">${avgConversie>=BENCH_CONV?'▲ Boven benchmark':'▼ Onder benchmark'}</div></div>
-      <div class="kpi-tile" style="--accent-color:${totRoas<1?'var(--danger)':totRoas<2?'var(--warning)':'var(--success)'}"><div class="kpi-label">ROAS</div><div class="kpi-value">${totRoas.toFixed(2)}x</div><div class="kpi-sub">€${totOmzet.toFixed(0)} omzet</div><div class="kpi-trend ${totRoas>=BENCH_ROAS?'trend-up':'trend-down'}">${totRoas>=BENCH_ROAS?'▲ Boven benchmark':'▼ Onder benchmark'}</div></div>
-      <div class="kpi-tile" style="--accent-color:var(--muted-fg)"><div class="kpi-label">Totaal Spend</div><div class="kpi-value">€${totKosten.toFixed(0)}</div><div class="kpi-sub">CPC: €${totKliks>0?(totKosten/totKliks).toFixed(2):0}</div></div>
-    </div>`;
-
-  const sorted = [...data].sort((a,b) => b.conversie - a.conversie);
-  document.getElementById('topConverters').innerHTML = sorted.slice(0,3).map(r => `
-    <div style="padding:0.55rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:0.82rem;font-weight:500;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.naam}</div>
-      <div style="display:flex;gap:0.5rem;"><span class="pill ${r.conversie>6?'pill-green':r.conversie>2?'pill-orange':'pill-red'}">${r.conversie.toFixed(1)}%</span></div>
-    </div>`).join('');
-
-  const worst = [...data].sort((a,b) => { const sA=a.kosten>0?a.roas:999; const sB=b.kosten>0?b.roas:999; return sA-sB; }).slice(0,3);
-  document.getElementById('worstPerformers').innerHTML = worst.map(r => `
-    <div style="padding:0.55rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-size:0.82rem;font-weight:500;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${r.naam}</div>
-      <div style="display:flex;gap:0.5rem;"><span class="pill pill-red">€${r.kosten.toFixed(0)}</span><span style="font-size:0.72rem;color:var(--muted-fg);">${r.roas.toFixed(1)}x</span></div>
-    </div>`).join('');
-
-  document.querySelector('#fullTable thead tr').innerHTML = `<th>${entityLabel}</th><th>Vertoningen</th><th>Kliks</th><th>CTR</th><th>Conv.</th><th>Conv.%</th><th>Kosten</th><th>Omzet</th><th>ROAS</th><th>Status</th>`;
-  document.getElementById('fullTableBody').innerHTML = [...data].sort((a,b) => b.kosten-a.kosten).map(r => {
-    const roasColor = r.roas>=4?'var(--success)':r.roas>=1?'var(--warning)':'var(--danger)';
-    const convColor = r.conversie>=BENCH_CONV?'var(--success)':r.conversie>=3?'var(--warning)':'var(--danger)';
-    const status = r.roas>=3&&r.conversie>=3?`<span class="pill pill-green">✓ Goed</span>`:r.kosten>50&&r.roas<1?`<span class="pill pill-red">✗ Stop</span>`:`<span class="pill pill-orange">⚡ Optim.</span>`;
-    return `<tr><td style="font-weight:500;font-size:0.82rem;">${r.naam}</td><td>${r.vertoningen.toLocaleString('nl')}</td><td>${r.kliks.toLocaleString('nl')}</td><td>${r.ctr.toFixed(1)}%</td><td>${r.bestellingen}</td><td style="font-weight:600;color:${convColor};">${r.conversie.toFixed(1)}%</td><td>€${r.kosten.toFixed(2)}</td><td>€${r.omzet.toFixed(2)}</td><td style="font-weight:600;color:${roasColor};">${r.roas>0?r.roas.toFixed(2)+'x':'-'}</td><td>${status}</td></tr>`;
-  }).join('');
-
-  const recs = [];
-  const highSpendLowRoas = data.filter(r => r.kosten > 50 && r.roas < 1);
-  const highClickLowConv = data.filter(r => r.kliks > 20 && r.conversie < 2);
-  const goodRoas = data.filter(r => r.roas >= 3 && r.kosten > 5);
-  if (avgConversie < 3) recs.push(`<div class="alert alert-info">📉 <strong>Conversie ${avgConversie.toFixed(1)}% ligt ver onder de benchmark van ${BENCH_CONV}%.</strong> Probleem zit op de productpagina. Prioriteer productteksten en foto's.</div>`);
-  if (highSpendLowRoas.length > 0) recs.push(`<div class="alert alert-info">💸 <strong>Pauzeer:</strong> ${highSpendLowRoas.map(r=>r.naam).join(', ')} — hoge spend, ROAS onder 1x.</div>`);
-  if (highClickLowConv.length > 0) recs.push(`<div class="alert alert-info">🖱️ <strong>Klikken maar geen aankopen:</strong> ${highClickLowConv.map(r=>r.naam).join(', ')}. Gebruik de Tekst Generator om de listing te verbeteren.</div>`);
-  if (goodRoas.length > 0) recs.push(`<div class="alert alert-success">✅ <strong>Schaal op:</strong> ${goodRoas.map(r=>r.naam+' ('+r.roas.toFixed(1)+'x)').join(', ')}. Verhoog dagbudget met 20-30%.</div>`);
-  document.getElementById('recommendations').innerHTML = recs.join('') || `<div class="alert alert-success">✅ Campagnes presteren redelijk. Zie de Tekst Generator voor optimalisatie.</div>`;
-}
-
-// ===================================================
-// BOL URL FETCHER (scorer + generator)
-// ===================================================
-async function fetchBolProduct(mode) {
-  const urlInput = mode === 'scorer' ? 'scorerBolUrl' : 'genBolUrl';
-  const statusEl = mode === 'scorer' ? 'scorerFetchStatus' : 'genFetchStatus';
-  const fetchBtn = mode === 'scorer' ? 'scorerFetchBtn' : 'genFetchBtn';
-  const url = document.getElementById(urlInput).value.trim();
-  if (!url || !url.includes('bol.com')) { showFetchStatus(statusEl,'error','Voer een geldige bol.com URL in.'); return; }
-  const btn = document.getElementById(fetchBtn); btn.disabled=true; btn.innerHTML='<span class="spinner"></span>';
-  showFetchStatus(statusEl,'loading','Product ophalen...');
-  showBolImportHelper(mode, url, statusEl);
-  btn.disabled=false; btn.innerHTML='📥 Importeer';
-}
-function showFetchStatus(elId, type, msg) {
-  const el = document.getElementById(elId); el.style.display='block';
-  const colors = {loading:'var(--muted-fg)',error:'var(--danger)',success:'var(--success)'};
-  el.style.color = colors[type]||'var(--muted-fg)'; el.innerHTML=msg;
-}
-function showBolImportHelper(mode, url, statusEl) {
-  const urlParts = url.split('/').filter(Boolean);
-  const productHint = urlParts.find(p=>p.length>10&&!p.match(/^\d+$/)&&p!=='bol.com'&&p!=='nl'&&p!=='p')||'';
-  const productName = productHint.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
-  const pasteAreaId = `bolPasteArea_${mode}`;
-  document.getElementById(statusEl).style.display='none';
-  const insertAfter = document.getElementById(mode==='scorer'?'scorerBolUrl':'genBolUrl').parentElement.parentElement;
-  const existing = document.getElementById('bolImportHelper_'+mode); if (existing) existing.remove();
-  const helper = document.createElement('div');
-  helper.id = 'bolImportHelper_'+mode;
-  helper.style.cssText='margin-top:0.75rem;padding:1rem;background:var(--muted);border:1px solid var(--border);border-radius:calc(var(--radius) - 4px);';
-  helper.innerHTML = `<div style="font-size:0.82rem;font-weight:600;color:var(--primary);margin-bottom:0.5rem;">📋 Bol.com blokkeert automatische import</div><ol style="font-size:0.78rem;color:var(--muted-fg);line-height:1.9;padding-left:1.25rem;margin-bottom:0.75rem;"><li>Ga naar <a href="${url}" target="_blank" style="color:var(--primary);">je bol.com productpagina ↗</a></li><li>Kopieer de <strong>titel + beschrijving</strong></li><li>Plak de tekst hieronder</li></ol><textarea id="${pasteAreaId}" rows="5" placeholder="Plak hier de tekst van je bol.com productpagina..." style="margin-bottom:0.5rem;"></textarea><div style="display:flex;gap:0.5rem;"><button class="btn btn-primary" onclick="processBolPaste('${mode}','${pasteAreaId}')" style="flex:1;">🔍 Verwerk & vul in</button><button class="btn btn-ghost" onclick="document.getElementById('bolImportHelper_${mode}').remove()">Annuleer</button></div>`;
-  insertAfter.appendChild(helper);
-}
-async function processBolPaste(mode, pasteAreaId) {
-  const pastedText = document.getElementById(pasteAreaId).value.trim();
-  if (!pastedText || pastedText.length < 20) { alert('Plak eerst de tekst.'); return; }
-  const helper = document.getElementById('bolImportHelper_'+mode);
-  helper.innerHTML = '<div style="text-align:center;padding:1rem;"><span class="spinner"></span> <span style="color:var(--muted-fg);font-size:0.85rem;margin-left:0.5rem;">AI verwerkt...</span></div>';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:600, messages:[{role:'user',content:`Analyseer deze bol.com productpaginatekst en extraheer productinfo. Geef terug als JSON:\n{"titel":"...","beschrijving":"...","bullets":["..."],"houtsoort":"...","afmeting":"...","prijs":"..."}\n\nTEKST:\n${pastedText.substring(0,3000)}`}] }) });
-    const data = await resp.json();
-    const json = JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim());
-    if (mode==='scorer') {
-      if (json.titel) document.getElementById('scorerTitle').value=json.titel;
-      if (json.beschrijving) document.getElementById('scorerDesc').value=json.beschrijving;
-      if (json.bullets?.length) document.getElementById('scorerBullets').value=json.bullets.map(b=>'• '+b).join('\n');
-    } else {
-      if (json.houtsoort&&json.houtsoort!=='onbekend') { const sel=document.getElementById('genHoutsoort'); const opts=Array.from(sel.options).map(o=>o.value.toLowerCase()); const match=opts.findIndex(o=>o.includes(json.houtsoort.toLowerCase().substring(0,5))); if(match>-1) sel.selectedIndex=match; }
-      if (json.afmeting) document.getElementById('genAfmeting').value=json.afmeting;
-      if (json.prijs) document.getElementById('genPrijs').value=json.prijs;
-      if (json.bullets?.length) document.getElementById('genFeatures').value=json.bullets.join('\n');
-    }
-    helper.innerHTML=`<div class="alert alert-success">✅ <strong>Geïmporteerd:</strong> "${json.titel}"<br><button onclick="document.getElementById('bolImportHelper_${mode}').remove()" style="margin-top:0.5rem;background:none;border:none;color:var(--muted-fg);cursor:pointer;font-size:0.75rem;text-decoration:underline;">Sluit</button></div>`;
-  } catch(e) { helper.innerHTML=`<div class="alert alert-warning">❌ Kon tekst niet verwerken. Vul handmatig in.</div>`; }
-}
-
-// ===================================================
-// SCORER
-// ===================================================
-async function scoreText() {
-  const title = document.getElementById('scorerTitle').value.trim();
-  const desc = document.getElementById('scorerDesc').value.trim();
-  const bullets = document.getElementById('scorerBullets').value.trim();
-  if (!title && !desc) { alert('Voer minimaal een titel of beschrijving in.'); return; }
-  const btn = document.getElementById('scoreBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyseren...';
-  document.getElementById('scoreResults').innerHTML='<div class="empty-state"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span><p style="margin-top:1rem;color:var(--muted-fg);">AI analyseert je tekst...</p></div>';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{role:'user',content:`Je bent een bol.com conversie-expert. Analyseer deze producttekst en geef scores 0-100. Reageer ALLEEN met JSON.\n\nTITEL: ${title}\nBESCHRIJVING: ${desc}\nBULLETS: ${bullets}\n\n{"totaalscore":<0-100>,"criteria":[{"naam":"Zoekwoordgebruik","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"Verkoopkracht titel","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"Beschrijving & storytelling","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"USPs & voordelen","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"Call-to-action","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"Doelgroep aanspreken","score":<0-100>,"feedback":"<80 tekens>"},{"naam":"Vertrouwen & bewijslast","score":<0-100>,"feedback":"<80 tekens>"}],"sterkePunten":["...","..."],"verbeterpunten":["...","...","..."],"oordeel":"<1 zin>"}`}] }) });
-    const data = await resp.json();
-    renderScore(JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim()));
-  } catch(e) { renderScore(getDemoScore()); }
-  btn.disabled=false; btn.innerHTML='🎯 Analyseer tekst';
-}
-function getDemoScore() {
-  return { totaalscore:42, criteria:[{naam:'Zoekwoordgebruik',score:55,feedback:'Mist: "snijplank eiken", "houten snijplank"'},{naam:'Verkoopkracht titel',score:38,feedback:'Te generiek, geen differentiator'},{naam:'Beschrijving & storytelling',score:30,feedback:'Te kort en technisch'},{naam:'USPs & voordelen',score:45,feedback:'Kenmerken maar geen voordelen voor klant'},{naam:'Call-to-action',score:20,feedback:'Geen urgentie aanwezig'},{naam:'Doelgroep aanspreken',score:50,feedback:'Onduidelijk voor wie'},{naam:'Vertrouwen & bewijslast',score:15,feedback:'Geen garanties of reviews'}], sterkePunten:['Afmetingen duidelijk','Houtsoort vermeld'], verbeterpunten:['Voeg emotioneel verhaal toe','Verwerk top-3 zoekwoorden','Noem garantie en retourbeleid'], oordeel:'De tekst informeert maar verkoopt niet.' };
-}
-function renderScore(json) {
-  const s = json.totaalscore;
-  const color = s>=70?'var(--success)':s>=45?'var(--warning)':'var(--danger)';
-  const label = s>=70?'Goed':s>=45?'Matig':'Zwak';
-  document.getElementById('scoreResults').innerHTML = `
-    <div class="card fade-in" style="border-top:3px solid ${color};">
-      <div class="score-ring"><div class="score-number" style="color:${color};">${s}</div><div class="score-label" style="color:${color};">${label}</div><div style="font-size:0.82rem;color:var(--muted-fg);margin-top:0.75rem;font-style:italic;">"${json.oordeel}"</div></div>
-      <hr class="divider">
-      <div class="card-title">Breakdown per criterium</div>
-      ${json.criteria.map(c => { const bc=c.score>=70?'var(--success)':c.score>=45?'var(--warning)':'var(--danger)'; return `<div style="margin-bottom:0.85rem;"><div style="display:flex;justify-content:space-between;margin-bottom:0.3rem;"><span style="font-size:0.82rem;font-weight:500;">${c.naam}</span><span style="font-size:0.78rem;font-weight:600;color:${bc};">${c.score}/100</span></div><div class="progress-bar"><div class="progress-fill" style="width:${c.score}%;background:${bc};"></div></div><div style="font-size:0.73rem;color:var(--muted-fg);margin-top:0.2rem;">→ ${c.feedback}</div></div>`; }).join('')}
-      <hr class="divider">
-      <div class="grid-2">
-        <div><div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted-fg);margin-bottom:0.5rem;">✅ Sterk</div>${json.sterkePunten.map(p=>`<div style="font-size:0.82rem;padding:0.25rem 0;color:var(--success);">• ${p}</div>`).join('')}</div>
-        <div><div style="font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted-fg);margin-bottom:0.5rem;">⚠️ Verbeter</div>${json.verbeterpunten.map(p=>`<div style="font-size:0.82rem;padding:0.25rem 0;color:var(--danger);">• ${p}</div>`).join('')}</div>
-      </div>
-      <div class="mt-3"><button class="btn btn-primary" onclick="document.querySelector('[data-tab=generator]').click()">✨ Genereer verbeterde tekst</button></div>
-    </div>`;
-}
-
-// ===================================================
-// GENERATOR
-// ===================================================
-async function generateText() {
-  const houtsoort = document.getElementById('genHoutsoort').value;
-  const afmeting = document.getElementById('genAfmeting').value||'niet opgegeven';
-  const features = document.getElementById('genFeatures').value;
-  const doelgroep = document.getElementById('genDoelgroep').value;
-  const toon = document.getElementById('genToon').value;
-  const prijs = document.getElementById('genPrijs').value||'niet opgegeven';
-  const btn = document.getElementById('genBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Genereren...';
-  document.getElementById('genOutput').innerHTML='<div class="empty-state"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span><p style="margin-top:1rem;color:var(--muted-fg);">AI schrijft je tekst...</p></div>';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1000, messages:[{role:'user',content:`Je bent een expert bol.com copywriter voor houten snijplanken. Schrijf een hoog-converterende listing. ALLEEN JSON:\n\n{"titel":"<max 120 tekens>","subtitel":"<max 80 tekens>","beschrijving":"<200-300 woorden>","bulletpoints":["<v1>","<v2>","<v3>","<v4>","<v5>"],"zoekwoorden":["<kw1>","<kw2>","<kw3>","<kw4>","<kw5>"],"tipsVoorFotos":["<t1>","<t2>","<t3>"]}\n\nHoutsoort: ${houtsoort}\nAfmeting: ${afmeting}\nKenmerken: ${features}\nDoelgroep: ${doelgroep}\nToon: ${toon}\nPrijs: €${prijs}`}] }) });
-    const data = await resp.json();
-    renderGenOutput(JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim()));
-  } catch(e) { renderGenOutput({titel:`${houtsoort} Snijplank ${afmeting} | Handgemaakt | Sapgeul`,subtitel:'Van de oven naar de tafel',beschrijving:`Massief ${houtsoort.toLowerCase()} met een tijdloze uitstraling. Elke plank uniek.`,bulletpoints:['✓ Massief hout — duurzamer dan bamboe','✓ Diepe sapgeul rondom','✓ Anti-slip rubbervoeten','✓ Voedselveilig behandeld','✓ Inclusief cadeauverpakking'],zoekwoorden:['houten snijplank','snijplank met sapgeul','snijplank cadeau'],tipsVoorFotos:['Lifestyle: plank in gebruik met groenten','Detail: close-up houtnerf','Cadeau: plank in verpakking']}); }
-  btn.disabled=false; btn.innerHTML='✨ Genereer geoptimaliseerde tekst';
-}
-function renderGenOutput(json) {
-  document.getElementById('genOutput').innerHTML = `
-    <div class="card fade-in">
-      <div class="card-title">📋 Gegenereerde Listing</div>
-      <div style="margin-bottom:1.25rem;"><label>Producttitel</label><div style="background:var(--accent);padding:0.85rem;border-radius:calc(var(--radius)-4px);font-weight:600;border-left:3px solid var(--primary);">${json.titel}</div><div style="font-size:0.72rem;color:var(--muted-fg);margin-top:0.25rem;">${json.titel.length} tekens</div></div>
-      <div style="margin-bottom:1.25rem;"><label>Beschrijving</label><div class="output-box"><button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextSibling.textContent.trim());this.textContent='✓ Gekopieerd!'">Kopieer</button><span>${json.beschrijving.replace(/\n/g,'<br>')}</span></div></div>
-      <div style="margin-bottom:1.25rem;"><label>Bullet Points</label>${json.bulletpoints.map(b=>`<div style="padding:0.55rem 0.85rem;background:var(--muted);border-radius:calc(var(--radius)-4px);margin-bottom:0.35rem;font-size:0.85rem;">${b}</div>`).join('')}</div>
-      <hr class="divider">
-      <div class="grid-2">
-        <div><label>Zoekwoorden</label><div style="display:flex;flex-wrap:wrap;gap:0.35rem;margin-top:0.25rem;">${json.zoekwoorden.map(k=>`<span class="insight-tag">${k}</span>`).join('')}</div></div>
-        <div><label>Tips voor foto's</label>${json.tipsVoorFotos.map(t=>`<div style="font-size:0.78rem;padding:0.2rem 0;color:var(--muted-fg);">📸 ${t}</div>`).join('')}</div>
-      </div>
-      <div class="mt-3 flex gap-1">
-        <button class="btn btn-primary" onclick="navigator.clipboard.writeText('TITEL:\n${json.titel}\n\nBESCHRIJVING:\n${json.beschrijving}\n\nBULLETS:\n${json.bulletpoints.join('\n')}');this.textContent='✓ Gekopieerd!'">📋 Alles kopiëren</button>
-        <button class="btn btn-ghost" onclick="document.querySelector('[data-tab=scorer]').click();setTimeout(()=>{document.getElementById('scorerTitle').value='${json.titel.replace(/'/g,"\\'")}';},100)">🎯 Score deze tekst</button>
-      </div>
-    </div>`;
-}
-
-// ===================================================
-// CONCURRENTIE
-// ===================================================
-async function analyzeCompetitors() {
-  const searchTerm = document.getElementById('concSearchTerm').value||'houten snijplank';
-  const segment = document.getElementById('concSegment').value;
-  const btn = document.getElementById('concBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyseren...';
-  document.getElementById('concPlaceholder').style.display='none';
-  document.getElementById('concResults').style.display='block';
-  document.getElementById('concResults').innerHTML='<div class="empty-state"><span class="spinner" style="width:2rem;height:2rem;border-width:3px;"></span><p style="margin-top:1rem;color:var(--muted-fg);">AI analyseert bol.com concurrenten...</p></div>';
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500, messages:[{role:'user',content:`Je bent een bol.com marktonderzoeker. Analyseer segment "${segment}" voor zoekterm "${searchTerm}". ALLEEN JSON:\n\n{"marktsamenvatting":"<2 zinnen>","gemConversieSegment":<getal>,"gemPrijs":<getal>,"topConcurrenten":[{"naam":"...","type":"...","prijsRange":"...","reviews":"...","sterkeKenmerken":["..."],"sterkeTekstElemanten":["..."],"zwakteVoorJou":"..."}],"winnendeTekstStrategieen":[{"strategie":"...","uitleg":"...","voorbeeld":"..."}],"kansen":["...","...","..."],"aanbevelingVoorTheWootz":"<2-3 zinnen>"}\n\n4 concurrenten, 3 strategieën.`}] }) });
-    const data = await resp.json();
-    renderCompetitors(JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim()), searchTerm, segment);
-  } catch(e) { renderCompetitors(getDemoCompetitors(), searchTerm, segment); }
-  btn.disabled=false; btn.innerHTML='🔍 Analyseer concurrenten';
-}
-function getDemoCompetitors() {
-  return { marktsamenvatting:'Het mid-range segment is competitief maar gefragmenteerd. Winnaars differentiëren op verhaal, niet prijs.', gemConversieSegment:7.4, gemPrijs:42, topConcurrenten:[{naam:'Burkle Home',type:'Eiken Set',prijsRange:'€39-€59',reviews:'4.8 (891)',sterkeKenmerken:['Sapgeul','Messenset','Cadeauverpakking'],sterkeTekstElemanten:['Emotionele opening','Duidelijke USPs'],zwakteVoorJou:'Geen personalisatie'},{naam:'Zassenhaus',type:'Walnoot XL',prijsRange:'€54-€79',reviews:'4.7 (423)',sterkeKenmerken:['Massief walnoot','Europees gemaakt'],sterkeTekstElemanten:['Herkomst als USP','Ambachtsverhaal'],zwakteVoorJou:'Hoge prijs voor cadeau'},{naam:'Continenta',type:'Bamboe 3-delig',prijsRange:'€24-€34',reviews:'4.5 (1204)',sterkeKenmerken:['Volume deal','Lage prijs'],sterkeTekstElemanten:['Prijsvoordeel prominent'],zwakteVoorJou:'Bamboe voelt goedkoper'},{naam:'Klarstein',type:'Acacia Set',prijsRange:'€29-€44',reviews:'4.3 (567)',sterkeKenmerken:['Anti-slip','Sapgeul'],sterkeTekstElemanten:['Technische specs'],zwakteVoorJou:'Mist emotionele verbinding'}], winnendeTekstStrategieen:[{strategie:'Emotionele opening',uitleg:'Begin met een scenario.',voorbeeld:'"Stel je voor: de geur van vers gesneden kruiden op massief eikenhout..."'},{strategie:'Sociale bewijslast vroeg',uitleg:'Reviews in eerste 50 woorden.',voorbeeld:'"Vertrouwd door 10.000+ thuiskoks · 4.8/5 sterren"'},{strategie:'Bezwaar-eliminatie',uitleg:'Benoem bezwaren en weerleg direct.',voorbeeld:'"Onderhoud? Simpel: droogwrijven. Klaar."'}], kansen:['Geen concurrent biedt personalisatie in dit segment','Cadeau-markt onderbenut','Reviews noemen "te kleine sapgeul" bij concurrenten'], aanbevelingVoorTheWootz:'Positioneer TheWootz als "het ambachtelijke alternatief". Voeg personalisatie toe en richt listings in op cadeau-zoektermen.' };
-}
-function renderCompetitors(json, searchTerm, segment) {
-  document.getElementById('concResults').innerHTML = `
-    <div class="kpi-grid" style="margin-bottom:1.25rem;">
-      <div class="kpi-card"><div class="kpi-icon">📊</div><div class="kpi-value">${json.gemConversieSegment}%</div><div class="kpi-label">Gem. conversie</div><div style="font-size:0.72rem;color:var(--muted-fg);">${segment}</div></div>
-      <div class="kpi-card"><div class="kpi-icon">💶</div><div class="kpi-value">€${json.gemPrijs}</div><div class="kpi-label">Gem. prijs</div><div style="font-size:0.72rem;color:var(--muted-fg);">in dit segment</div></div>
-      <div class="kpi-card"><div class="kpi-icon">🔍</div><div class="kpi-value">${json.topConcurrenten.length}</div><div class="kpi-label">Concurrenten</div><div style="font-size:0.72rem;color:var(--muted-fg);">geanalyseerd</div></div>
     </div>
-    <div class="card"><div class="card-title">📊 Marktsamenvatting</div><div style="font-size:0.88rem;line-height:1.7;color:var(--muted-fg);">${json.marktsamenvatting}</div></div>
-    <div class="card"><div class="card-title">🏆 Top Concurrenten — "${searchTerm}"</div><div class="grid-2">${json.topConcurrenten.map((c,i)=>`<div class="competitor-card"><div class="competitor-rank">#${i+1} TOP LISTING</div><div class="competitor-name">${c.naam}</div><div class="competitor-meta">${c.type} · ${c.prijsRange} · ⭐ ${c.reviews}</div><div style="margin-bottom:0.75rem;"><div style="font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted-fg);margin-bottom:0.35rem;">Kenmerken</div>${c.sterkeKenmerken.map(k=>`<span class="insight-tag">${k}</span>`).join('')}</div><div style="background:var(--accent);border-left:2px solid var(--primary);padding:0.6rem 0.85rem;border-radius:4px;"><div style="font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--primary);margin-bottom:0.2rem;">Kans voor TheWootz</div><div style="font-size:0.78rem;color:var(--accent-fg);">${c.zwakteVoorJou}</div></div></div>`).join('')}</div></div>
-    <div class="card"><div class="card-title">✍️ Winnende Tekst Strategieën</div>${json.winnendeTekstStrategieen.map(s=>`<div style="padding:1rem 0;border-bottom:1px solid var(--border);"><div style="font-weight:600;font-size:0.9rem;margin-bottom:0.3rem;">${s.strategie}</div><div style="font-size:0.82rem;color:var(--muted-fg);margin-bottom:0.5rem;">${s.uitleg}</div><div style="background:var(--fg);color:var(--bg);padding:0.6rem 1rem;border-radius:calc(var(--radius)-4px);font-size:0.82rem;font-style:italic;">"${s.voorbeeld}"</div></div>`).join('')}</div>
-    <div class="grid-2">
-      <div class="card"><div class="card-title">💡 Markt Kansen</div>${json.kansen.map((k,i)=>`<div style="display:flex;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border);font-size:0.84rem;"><span style="color:var(--primary);font-weight:700;">${i+1}.</span><span>${k}</span></div>`).join('')}</div>
-      <div class="card" style="border:2px solid var(--primary);background:var(--accent);"><div class="card-title" style="color:var(--accent-fg);">🎯 Aanbeveling voor TheWootz</div><div style="font-size:0.88rem;line-height:1.7;color:var(--accent-fg);">${json.aanbevelingVoorTheWootz}</div><div class="mt-3"><button class="btn btn-primary" onclick="document.querySelector('[data-tab=generator]').click()">→ Start met Tekst Generator</button></div></div>
-    </div>`;
-}
-</script>
+
+    <!-- User info -->
+    <div class="sidebar-user">
+      <div class="user-avatar" id="userAvatar">?</div>
+      <div class="user-info">
+        <div class="user-name" id="userName">Laden...</div>
+        <div class="user-plan" id="userPlan">Free plan</div>
+      </div>
+      <button class="sidebar-logout-btn" onclick="handleLogout()" title="Uitloggen">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Store selector -->
+    <div class="sidebar-store">
+      <select class="store-select" id="storeSelect" onchange="onStoreChange()">
+        <option value="">— Alle winkels —</option>
+      </select>
+    </div>
+
+    <div class="sidebar-section">Tools</div>
+
+    <nav id="sideNav">
+      <div class="nav-item active" data-tab="dashboard">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Sales Dashboard
+      </div>
+      <div class="nav-item" data-tab="analyse">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Advertentie Analyse
+      </div>
+      <div class="nav-item" data-tab="scorer">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        Tekst Scorer
+      </div>
+      <div class="nav-item" data-tab="generator">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Tekst Generator
+      </div>
+      <div class="nav-item" data-tab="concurrent">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Concurrentie Analyse
+      </div>
+      <div class="nav-item" data-tab="stores">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Mijn Winkels
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">BETA v2.0 · TheWootz © 2026</div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-wrap">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="topbar-title" id="topbarTitle">Sales Dashboard</div>
+      <div class="live-pill" id="livePill" style="display:none;">
+        <span class="live-dot"></span> LIVE
+      </div>
+      <div class="period-group">
+        <span>Periode:</span>
+        <input type="date" id="startDate">
+        <span>tot</span>
+        <input type="date" id="endDate">
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost btn-sm" id="syncBtn" style="display:none;" onclick="triggerSync()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span class="btn-sm-hide">Sync</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="refreshBtn" style="display:none;" onclick="loadDashboard()">↻</button>
+      </div>
+    </header>
+
+    <!-- TAB CONTENT -->
+    <div class="content">
+
+      <!-- ══ DASHBOARD TAB ══ -->
+      <div class="tab-panel active" id="tab-dashboard">
+        <div class="page-header">
+          <h1 class="page-title">Sales Dashboard</h1>
+          <p class="page-sub">Volledige historische omzet en bestellingen uit je gesynchroniseerde data.</p>
+        </div>
+
+        <!-- No stores state -->
+        <div id="dashboardNoStores" style="display:none;">
+          <div class="card" style="text-align:center;padding:3rem;">
+            <div style="font-size:2.5rem;margin-bottom:1rem;">🏪</div>
+            <h3 style="font-family:var(--font-h);margin-bottom:0.5rem;">Koppel je eerste winkel</h3>
+            <p style="color:var(--muted-fg);font-size:0.85rem;margin-bottom:1.5rem;">Verbind je bol.com account om live data te zien.</p>
+            <button class="btn btn-primary" onclick="switchTab('stores')">+ Winkel koppelen</button>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div id="dashboardLoading" style="display:none;">
+          <div class="empty-state">
+            <span class="spinner spinner-lg"></span>
+            <p style="margin-top:1rem;color:var(--muted-fg);">Data ophalen...</p>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div id="dashboardError" style="display:none;">
+          <div class="alert alert-danger" style="margin-bottom:1rem;">
+            <strong id="dashboardErrorMsg"></strong>
+            <div id="dashboardErrorDetail" style="font-size:0.78rem;margin-top:0.3rem;"></div>
+          </div>
+        </div>
+
+        <!-- Sync needed banner -->
+        <div id="syncBanner" style="display:none;" class="alert alert-warning" style="margin-bottom:1rem;">
+          ⚡ <strong>Eerste sync nodig</strong> — Klik op "Sync" om je historische bestellingen te importeren (duurt ~30 seconden).
+          <button class="btn btn-sm btn-primary" style="margin-left:0.75rem;" onclick="triggerSync(true)">Nu synchroniseren</button>
+        </div>
+
+        <!-- Content -->
+        <div id="dashboardContent" style="display:none;" class="fade-in">
+          <!-- KPIs -->
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon">💶</div>
+                <span class="kpi-badge" id="kpiBadge1">—</span>
+              </div>
+              <div class="kpi-value" id="kpiOmzet">€0</div>
+              <div class="kpi-label">Totale omzet</div>
+              <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;" id="kpiPeriode"></div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon">🛒</div>
+                <span class="kpi-badge" id="kpiBadge2">—</span>
+              </div>
+              <div class="kpi-value" id="kpiBestellingen">0</div>
+              <div class="kpi-label">Bestellingen</div>
+              <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">in de geselecteerde periode</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon">📦</div>
+                <span class="kpi-badge" id="kpiBadge3">—</span>
+              </div>
+              <div class="kpi-value" id="kpiGem">€0</div>
+              <div class="kpi-label">Gem. orderwaarde</div>
+              <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">per bestelling</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-top">
+                <div class="kpi-icon">📈</div>
+                <span class="kpi-badge" id="kpiBadge4">—</span>
+              </div>
+              <div class="kpi-value" id="kpiPerDag">€0</div>
+              <div class="kpi-label">Gem. per actieve dag</div>
+              <div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.2rem;">dagelijkse omzet</div>
+            </div>
+          </div>
+
+          <!-- Charts + top products -->
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-title">🏆 Top producten</div>
+              <div id="topProductenTable"></div>
+            </div>
+            <div class="card">
+              <div class="card-title">💡 Conversie tips</div>
+              <div id="conversieTips"></div>
+            </div>
+          </div>
+
+          <!-- Omzet chart -->
+          <div class="card">
+            <div class="card-title">📈 Omzet per dag</div>
+            <div class="chart-wrap" id="omzetChart"></div>
+          </div>
+
+          <!-- Platform breakdown (voor multi-platform) -->
+          <div class="card" id="platformCard" style="display:none;">
+            <div class="card-title">🌐 Omzet per platform</div>
+            <div id="platformBreakdown"></div>
+          </div>
+
+          <!-- Actiepunten -->
+          <div class="card" id="actiepuntenCard" style="display:none;background:linear-gradient(135deg,hsl(25,95%,98%),hsl(25,95%,96%));border-color:hsl(25,95%,85%);">
+            <div class="card-title">🎯 Concrete actiepunten</div>
+            <div id="actiepunten" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ STORES TAB ══ -->
+      <div class="tab-panel" id="tab-stores">
+        <div class="page-header">
+          <h1 class="page-title">Mijn Winkels</h1>
+          <p class="page-sub">Beheer je winkelkoppelingen. Elke winkel wordt automatisch gesynchroniseerd.</p>
+        </div>
+
+        <div class="grid-2" style="align-items:start;">
+          <!-- Store list -->
+          <div>
+            <div class="card">
+              <div class="card-title">Gekoppelde winkels</div>
+              <div id="storeList">
+                <div class="empty-state" style="padding:2rem;">
+                  <span class="spinner"></span>
+                  <p style="margin-top:0.75rem;">Laden...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add store -->
+          <div>
+            <div class="card">
+              <div class="card-title">➕ Winkel koppelen</div>
+
+              <!-- Platform tabs -->
+              <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" id="platformBtn-bol" onclick="selectPlatform('bol')">🏪 Bol.com</button>
+                <button class="btn btn-ghost btn-sm" id="platformBtn-etsy" onclick="selectPlatform('etsy')" disabled title="Binnenkort">Etsy</button>
+                <button class="btn btn-ghost btn-sm" id="platformBtn-amazon" onclick="selectPlatform('amazon')" disabled title="Binnenkort">Amazon</button>
+              </div>
+
+              <div id="addStoreForm">
+                <div class="form-row">
+                  <label>Winkelnaam</label>
+                  <input type="text" id="storeName" placeholder="Bijv: TheWootz NL">
+                </div>
+                <div class="form-row">
+                  <label>Client ID</label>
+                  <input type="text" id="storeClientId" placeholder="Jouw bol.com Client ID" autocomplete="off">
+                </div>
+                <div class="form-row">
+                  <label>Client Secret</label>
+                  <input type="password" id="storeClientSecret" placeholder="Jouw bol.com Client Secret" autocomplete="off">
+                </div>
+                <div class="alert alert-info" style="font-size:0.75rem;">
+                  📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
+                </div>
+                <div id="addStoreError" class="alert alert-danger" style="display:none;"></div>
+                <button class="btn btn-primary" style="width:100%;" id="addStoreBtn" onclick="addStore()">
+                  🔗 Winkel koppelen & valideren
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ ANALYSE TAB ══ -->
+      <div class="tab-panel" id="tab-analyse">
+        <div class="page-header">
+          <h1 class="page-title">Advertentie Analyse</h1>
+          <p class="page-sub">Upload je bol.com advertentie-rapportage en ontdek wat je conversie saboteert.</p>
+        </div>
+        <div class="grid-2" style="align-items:start;">
+          <div>
+            <div class="card">
+              <div class="card-title">Advertentie Analyse</div>
+              <div class="upload-zone" id="uploadZone" onclick="document.getElementById('csvInput').click()">
+                <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" onchange="handleFileUpload(event)">
+                <div class="upload-icon">📤</div>
+                <div class="upload-title">Sleep je CSV hier naartoe</div>
+                <div class="upload-sub">of klik om te bladeren · CSV, XLSX · max 10MB</div>
+              </div>
+              <div class="alert alert-orange" style="margin-top:1rem;font-size:0.75rem;">
+                💡 Exporteer via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV
+              </div>
+            </div>
+            <div id="kpiGrid"></div>
+            <div class="grid-2" id="topWorstGrid" style="display:none;">
+              <div class="card"><div class="card-title">🏆 Top Converterend</div><div id="topConverters"></div></div>
+              <div class="card"><div class="card-title">⚠️ Onderpresteerders</div><div id="worstPerformers"></div></div>
+            </div>
+            <div id="recommendations"></div>
+          </div>
+          <div class="card" id="allProductsCard">
+            <div class="card-title">Alle Producten</div>
+            <div class="card-sub">Overzicht van je advertentie prestaties</div>
+            <div id="analysePlaceholder">
+              <div class="empty-state" style="padding:3rem 1rem;">
+                <div class="empty-icon">📂</div>
+                <p>Upload een CSV om data te zien</p>
+                <button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
+              </div>
+            </div>
+            <div id="analyseResults" style="display:none;">
+              <div class="table-wrap"><table id="fullTable"><thead><tr></tr></thead><tbody id="fullTableBody"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ SCORER TAB ══ -->
+      <div class="tab-panel" id="tab-scorer">
+        <div class="page-header">
+          <h1 class="page-title">Tekst Scorer</h1>
+          <p class="page-sub">Analyseer hoe goed je bol.com producttekst converteert.</p>
+        </div>
+        <div class="grid-2" style="align-items:start;">
+          <div class="card">
+            <div class="card-title">Jouw producttekst</div>
+            <div class="form-row">
+              <label>Bol.com product URL (optioneel)</label>
+              <div style="display:flex;gap:0.5rem;">
+                <input type="text" id="scorerBolUrl" placeholder="https://www.bol.com/nl/nl/p/...">
+                <button class="btn btn-ghost btn-sm" id="scorerFetchBtn" onclick="fetchBolProduct('scorer')" style="white-space:nowrap;">📥 Importeer</button>
+              </div>
+            </div>
+            <div class="form-row"><label>Producttitel</label><input type="text" id="scorerTitle" placeholder="Bijv: Houten Snijplank Eiken 40x30cm..."></div>
+            <div class="form-row"><label>Beschrijving</label><textarea id="scorerDesc" rows="5" placeholder="Plak hier je productbeschrijving..."></textarea></div>
+            <div class="form-row"><label>Bullet points</label><textarea id="scorerBullets" rows="4" placeholder="• Kenmerk 1&#10;• Kenmerk 2&#10;• Kenmerk 3"></textarea></div>
+            <button class="btn btn-primary" style="width:100%;" id="scoreBtn" onclick="scoreText()">🎯 Analyseer tekst</button>
+          </div>
+          <div id="scoreResults">
+            <div class="empty-state"><div class="empty-icon">🎯</div><p>Vul je producttekst in en klik op Analyseer</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ GENERATOR TAB ══ -->
+      <div class="tab-panel" id="tab-generator">
+        <div class="page-header">
+          <h1 class="page-title">Tekst Generator</h1>
+          <p class="page-sub">Genereer hoog-converterende bol.com productteksten met AI.</p>
+        </div>
+        <div class="grid-2" style="align-items:start;">
+          <div class="card">
+            <div class="card-title">Product details</div>
+            <div class="form-row">
+              <label>Bol.com product URL (optioneel)</label>
+              <div style="display:flex;gap:0.5rem;">
+                <input type="text" id="genBolUrl" placeholder="https://www.bol.com/nl/nl/p/...">
+                <button class="btn btn-ghost btn-sm" id="genFetchBtn" onclick="fetchBolProduct('generator')" style="white-space:nowrap;">📥 Importeer</button>
+              </div>
+            </div>
+            <div class="form-grid">
+              <div class="form-row"><label>Houtsoort</label><select id="genHoutsoort"><option>Eikenhout</option><option>Walnoothout</option><option>Acaciahout</option><option>Bamboehout</option><option>Olijfhout</option><option>Kersenhout</option><option>Anders</option></select></div>
+              <div class="form-row"><label>Afmeting</label><input type="text" id="genAfmeting" placeholder="Bijv: 40x30x2cm"></div>
+              <div class="form-row"><label>Doelgroep</label><select id="genDoelgroep"><option>Thuiskoks & foodliefhebbers</option><option>Cadeau kopers</option><option>Professionele chefs</option><option>Interieurliefhebbers</option></select></div>
+              <div class="form-row"><label>Toon</label><select id="genToon"><option>Warm & persoonlijk</option><option>Professioneel & zakelijk</option><option>Speels & creatief</option><option>Luxe & premium</option></select></div>
+            </div>
+            <div class="form-row"><label>Verkoopprijs (€)</label><input type="number" id="genPrijs" placeholder="Bijv: 49.95"></div>
+            <div class="form-row"><label>Kenmerken & USP's</label><textarea id="genFeatures" rows="4" placeholder="Bijv: sapgeul, anti-slip poten, voedselveilig behandeld..."></textarea></div>
+            <button class="btn btn-primary" style="width:100%;" id="genBtn" onclick="generateText()">✨ Genereer geoptimaliseerde tekst</button>
+          </div>
+          <div id="genOutput">
+            <div class="empty-state"><div class="empty-icon">✨</div><p>Vul de productdetails in en klik op Genereer</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ CONCURRENT TAB ══ -->
+      <div class="tab-panel" id="tab-concurrent">
+        <div class="page-header">
+          <h1 class="page-title">Concurrentie Analyse</h1>
+          <p class="page-sub">Analyseer wat de topverkopers doen en hoe jij je kunt onderscheiden.</p>
+        </div>
+        <div class="card" style="max-width:600px;">
+          <div class="card-title">Zoekterm & segment</div>
+          <div class="form-grid">
+            <div class="form-row"><label>Zoekterm</label><input type="text" id="concSearchTerm" placeholder="Bijv: houten snijplank" value="houten snijplank"></div>
+            <div class="form-row"><label>Prijssegment</label><select id="concSegment"><option>Budget (€0-€25)</option><option selected>Mid-range (€25-€60)</option><option>Premium (€60+)</option></select></div>
+          </div>
+          <button class="btn btn-primary" onclick="analyzeCompetitors()" id="concBtn">🔍 Analyseer concurrenten</button>
+        </div>
+        <div id="concResults" style="display:none;"></div>
+        <div id="concPlaceholder"><div class="empty-state"><div class="empty-icon">🔍</div><p>Klik op Analyseer om inzichten te laden</p></div></div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main-wrap -->
+</div><!-- /appScreen -->
+
+<!-- ═══════════════════════════════════════════════════════
+     SYNC MODAL
+════════════════════════════════════════════════════════ -->
+<div class="modal-backdrop" id="syncModal">
+  <div class="modal">
+    <div class="modal-title">🔄 Synchroniseren</div>
+    <div class="modal-sub" id="syncModalText">Bezig met ophalen van bestellingen van bol.com...</div>
+    <div style="text-align:center;padding:1.5rem 0;">
+      <span class="spinner spinner-lg"></span>
+    </div>
+    <div id="syncResult" style="display:none;"></div>
+    <div style="text-align:center;margin-top:0.5rem;">
+      <button class="btn btn-ghost btn-sm" id="syncCloseBtn" style="display:none;" onclick="closeSyncModal()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>

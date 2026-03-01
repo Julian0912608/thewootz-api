@@ -1,0 +1,802 @@
+// ═══════════════════════════════════════════════════════════
+// TheWootz SaaS — app.js
+// ═══════════════════════════════════════════════════════════
+
+const API = 'https://thewootz-api.vercel.app';
+let currentUser = null;
+let currentSession = null;
+let currentStores = [];
+let selectedStoreId = '';
+let selectedPlatform = 'bol';
+let dashboardLoading = false;
+
+// ─── DATE INIT ────────────────────────────────────────────
+const _today = new Date();
+const _30ago = new Date(_today - 30 * 86400000);
+document.getElementById('endDate').value   = _today.toISOString().split('T')[0];
+document.getElementById('startDate').value = _30ago.toISOString().split('T')[0];
+
+// ═══════════════════════════════════════════════════════════
+// AUTH — helpers
+// ═══════════════════════════════════════════════════════════
+function saveSession(session, user) {
+  currentSession = session;
+  currentUser    = user;
+  localStorage.setItem('tw_session', JSON.stringify(session));
+  localStorage.setItem('tw_user', JSON.stringify(user));
+}
+function clearSession() {
+  currentSession = null; currentUser = null;
+  localStorage.removeItem('tw_session');
+  localStorage.removeItem('tw_user');
+}
+function loadSavedSession() {
+  try {
+    const s = localStorage.getItem('tw_session');
+    const u = localStorage.getItem('tw_user');
+    if (s && u) { currentSession = JSON.parse(s); currentUser = JSON.parse(u); return true; }
+  } catch {}
+  return false;
+}
+function isSessionValid() {
+  if (!currentSession) return false;
+  // Controleer expiry (Supabase JWT expires_at is in seconden)
+  const expiry = currentSession.expires_at * 1000;
+  return Date.now() < expiry - 60000; // 1 minuut buffer
+}
+async function ensureSession() {
+  if (isSessionValid()) return true;
+  if (!currentSession?.refresh_token) return false;
+  try {
+    const res = await fetch(`${API}/api/auth`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'refresh', refreshToken: currentSession.refresh_token })
+    });
+    if (!res.ok) { clearSession(); return false; }
+    const data = await res.json();
+    currentSession = data.session;
+    localStorage.setItem('tw_session', JSON.stringify(currentSession));
+    return true;
+  } catch { return false; }
+}
+function getAuthHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    'X-User-Token': currentSession?.access_token || ''
+  };
+}
+
+// ─── UI AUTH HELPERS ──────────────────────────────────────
+function showAuthTab(tab) {
+  document.getElementById('loginForm').style.display    = tab === 'login'    ? '' : 'none';
+  document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
+  document.getElementById('tabLogin').classList.toggle('active',    tab === 'login');
+  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+}
+function showAuthError(id, msg)    { const el = document.getElementById(id); el.textContent = msg; el.style.display = 'block'; }
+function hideAuthError(id)         { document.getElementById(id).style.display = 'none'; }
+function showAuthSuccess(id, msg)  { const el = document.getElementById(id); el.textContent = msg; el.style.display = 'block'; }
+
+// ─── LOGIN ────────────────────────────────────────────────
+async function handleLogin() {
+  hideAuthError('loginError');
+  const email    = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password) { showAuthError('loginError', 'Vul email en wachtwoord in'); return; }
+
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Bezig...';
+
+  try {
+    const res = await fetch(`${API}/api/auth`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAuthError('loginError', data.error || 'Inloggen mislukt'); return; }
+
+    saveSession(data.session, data.user);
+    enterApp();
+  } catch (e) { showAuthError('loginError', 'Verbinding mislukt: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Inloggen'; }
+}
+
+// ─── REGISTER ─────────────────────────────────────────────
+async function handleRegister() {
+  hideAuthError('registerError');
+  const fullName = document.getElementById('regName').value.trim();
+  const email    = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+
+  if (!email || !password) { showAuthError('registerError', 'Vul alle velden in'); return; }
+  if (password.length < 8) { showAuthError('registerError', 'Wachtwoord minimaal 8 tekens'); return; }
+
+  const btn = document.getElementById('registerBtn');
+  btn.disabled = true; btn.textContent = 'Account aanmaken...';
+
+  try {
+    const res = await fetch(`${API}/api/auth`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'register', email, password, fullName })
+    });
+    const data = await res.json();
+    if (!res.ok) { showAuthError('registerError', data.error || 'Registratie mislukt'); return; }
+
+    // Als sessie direct beschikbaar (email verificatie uitgeschakeld)
+    if (data.session) { saveSession(data.session, data.user); enterApp(); return; }
+
+    showAuthSuccess('registerSuccess', '✅ Account aangemaakt! Check je email om te bevestigen, dan kun je inloggen.');
+    showAuthTab('login');
+  } catch (e) { showAuthError('registerError', 'Verbinding mislukt: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Account aanmaken'; }
+}
+
+// ─── LOGOUT ───────────────────────────────────────────────
+function handleLogout() {
+  clearSession();
+  currentStores = [];
+  document.getElementById('authScreen').style.display = '';
+  document.getElementById('appScreen').style.display  = 'none';
+  document.getElementById('loginEmail').value    = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// APP INIT
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('load', async () => {
+  // Enter-toets in auth forms
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const lf = document.getElementById('loginForm');
+      const rf = document.getElementById('registerForm');
+      if (lf && lf.style.display !== 'none') handleLogin();
+      else if (rf && rf.style.display !== 'none') handleRegister();
+    }
+  });
+
+  if (loadSavedSession() && isSessionValid()) {
+    enterApp();
+  } else if (loadSavedSession() && currentSession?.refresh_token) {
+    const ok = await ensureSession();
+    if (ok) enterApp();
+    else showAuthScreen();
+  } else {
+    showAuthScreen();
+  }
+});
+
+function showAuthScreen() {
+  document.getElementById('authScreen').style.display = '';
+  document.getElementById('appScreen').style.display  = 'none';
+}
+
+async function enterApp() {
+  document.getElementById('authScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display  = '';
+
+  // Update user info in sidebar
+  const name = currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Gebruiker';
+  document.getElementById('userName').textContent   = name;
+  document.getElementById('userPlan').textContent   = 'Free plan';
+  document.getElementById('userAvatar').textContent = name.charAt(0).toUpperCase();
+
+  // Navigatie events
+  document.querySelectorAll('#sideNav .nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      switchTab(item.dataset.tab);
+      // Mobile: sluit sidebar
+      if (window.innerWidth <= 768) toggleSidebar(false);
+    });
+  });
+
+  await loadStores();
+  loadDashboard();
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('#sideNav .nav-item').forEach(i => i.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const navItem = document.querySelector(`[data-tab="${tab}"]`);
+  if (navItem) navItem.classList.add('active');
+  const panel = document.getElementById('tab-' + tab);
+  if (panel) panel.classList.add('active');
+
+  // Update topbar title
+  const titles = { dashboard:'Sales Dashboard', analyse:'Advertentie Analyse', scorer:'Tekst Scorer', generator:'Tekst Generator', concurrent:'Concurrentie Analyse', stores:'Mijn Winkels' };
+  document.getElementById('topbarTitle').textContent = titles[tab] || tab;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MOBILE SIDEBAR
+// ═══════════════════════════════════════════════════════════
+function toggleSidebar(forceClose) {
+  const sidebar  = document.getElementById('sidebar');
+  const overlay  = document.getElementById('sidebarOverlay');
+  const isOpen   = sidebar.classList.contains('open');
+  const newState = forceClose === true ? false : !isOpen;
+  sidebar.classList.toggle('open', newState);
+  overlay.classList.toggle('open', newState);
+}
+
+// ═══════════════════════════════════════════════════════════
+// STORES
+// ═══════════════════════════════════════════════════════════
+async function loadStores() {
+  if (!await ensureSession()) return;
+  try {
+    const res = await fetch(`${API}/api/stores`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    currentStores = data.stores || [];
+    renderStoreList();
+    updateStoreSelector();
+  } catch (e) { console.error('loadStores:', e); }
+}
+
+function renderStoreList() {
+  const el = document.getElementById('storeList');
+  if (!currentStores.length) {
+    el.innerHTML = `<div class="empty-state" style="padding:2rem;">
+      <div class="empty-icon">🏪</div>
+      <p>Nog geen winkels gekoppeld.</p>
+      <p style="font-size:0.8rem;color:var(--muted-fg);margin-top:0.5rem;">Koppel je eerste bol.com winkel hiernaast.</p>
+    </div>`;
+    return;
+  }
+  const platformEmoji = { bol:'🏪', etsy:'🎨', amazon:'📦', pinterest:'📌' };
+  el.innerHTML = currentStores.map(s => {
+    const lastSync = s.last_synced_at 
+      ? 'Gesynchroniseerd: ' + new Date(s.last_synced_at).toLocaleString('nl-NL', { dateStyle:'short', timeStyle:'short' })
+      : 'Nog niet gesynchroniseerd';
+    return `<div class="store-card">
+      <div class="store-platform-icon">${platformEmoji[s.platform] || '🏪'}</div>
+      <div class="store-info">
+        <div class="store-name">${s.name}</div>
+        <div class="store-platform">${s.platform}</div>
+        <div class="store-sync">${lastSync}</div>
+      </div>
+      <div style="display:flex;gap:0.5rem;flex-shrink:0;">
+        <button class="btn btn-ghost btn-sm" onclick="triggerSyncForStore('${s.id}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Sync
+        </button>
+        <button class="btn btn-danger btn-sm" onclick="deleteStore('${s.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateStoreSelector() {
+  const sel = document.getElementById('storeSelect');
+  sel.innerHTML = '<option value="">— Alle winkels —</option>' +
+    currentStores.map(s => `<option value="${s.id}">${s.name} (${s.platform})</option>`).join('');
+  sel.value = selectedStoreId;
+}
+
+function onStoreChange() {
+  selectedStoreId = document.getElementById('storeSelect').value;
+  if (document.getElementById('tab-dashboard').classList.contains('active')) {
+    loadDashboard();
+  }
+}
+
+function selectPlatform(p) {
+  selectedPlatform = p;
+  ['bol','etsy','amazon'].forEach(pl => {
+    const btn = document.getElementById('platformBtn-' + pl);
+    if (btn) btn.className = pl === p ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  });
+}
+
+async function addStore() {
+  const name         = document.getElementById('storeName').value.trim();
+  const clientId     = document.getElementById('storeClientId').value.trim();
+  const clientSecret = document.getElementById('storeClientSecret').value.trim();
+  const errEl        = document.getElementById('addStoreError');
+  errEl.style.display = 'none';
+
+  if (!clientId || !clientSecret) { errEl.textContent = 'Vul Client ID en Client Secret in'; errEl.style.display = 'block'; return; }
+  if (!await ensureSession()) return;
+
+  const btn = document.getElementById('addStoreBtn');
+  btn.disabled = true; btn.textContent = '🔍 Valideren & koppelen...';
+
+  try {
+    const res = await fetch(`${API}/api/stores`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ platform: selectedPlatform, name: name || undefined, clientId, clientSecret })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error + (data.detail ? ` — ${data.detail}` : '');
+      errEl.style.display = 'block';
+      return;
+    }
+
+    // Success! Clear form
+    document.getElementById('storeName').value         = '';
+    document.getElementById('storeClientId').value     = '';
+    document.getElementById('storeClientSecret').value = '';
+
+    await loadStores();
+
+    // Vraag of ze direct willen synchroniseren
+    const storeId = data.store.id;
+    const doSync  = confirm(`✅ Winkel "${data.store.name}" gekoppeld!\n\nWil je nu direct een volledige sync uitvoeren? Dit importeert je bestellingen van de afgelopen 90 dagen.\n\n(Dit duurt ~30 seconden)`);
+    if (doSync) triggerSyncForStore(storeId, true);
+
+  } catch (e) { errEl.textContent = 'Verbinding mislukt: ' + e.message; errEl.style.display = 'block'; }
+  finally { btn.disabled = false; btn.textContent = '🔗 Winkel koppelen & valideren'; }
+}
+
+async function deleteStore(storeId) {
+  if (!confirm('Weet je zeker dat je deze winkel wilt verwijderen? Je gesynchroniseerde data blijft bewaard.')) return;
+  if (!await ensureSession()) return;
+
+  try {
+    const res = await fetch(`${API}/api/stores?id=${storeId}`, { method: 'DELETE', headers: getAuthHeaders() });
+    if (res.ok) { await loadStores(); }
+  } catch (e) { alert('Verwijderen mislukt: ' + e.message); }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SYNC
+// ═══════════════════════════════════════════════════════════
+function openSyncModal(text) {
+  document.getElementById('syncModalText').textContent = text || 'Bezig met synchroniseren...';
+  document.getElementById('syncResult').style.display = 'none';
+  document.getElementById('syncCloseBtn').style.display = 'none';
+  document.getElementById('syncModal').classList.add('open');
+}
+function closeSyncModal() {
+  document.getElementById('syncModal').classList.remove('open');
+}
+
+async function triggerSync(fullSync) {
+  // Sync de actieve store of de eerste store
+  const storeId = selectedStoreId || currentStores[0]?.id;
+  if (!storeId) { alert('Geen winkel geselecteerd. Ga naar "Mijn Winkels" om een winkel te koppelen.'); return; }
+  triggerSyncForStore(storeId, fullSync);
+}
+
+async function triggerSyncForStore(storeId, fullSync = false) {
+  if (!await ensureSession()) return;
+
+  const isFullSync = fullSync === true;
+  openSyncModal(isFullSync 
+    ? 'Volledige sync gestart — 90 dagen bestellingen ophalen...' 
+    : 'Incrementele sync — bestellingen van afgelopen 2 dagen ophalen...'
+  );
+
+  try {
+    const res = await fetch(`${API}/api/sync/bol`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ storeId, fullSync: isFullSync })
+    });
+    const data = await res.json();
+
+    const resultEl = document.getElementById('syncResult');
+    resultEl.style.display = 'block';
+    if (res.ok) {
+      resultEl.innerHTML = `<div class="alert alert-success">${data.message}<br><small>${data.daysChecked} dagen gecontroleerd · type: ${data.syncType}</small></div>`;
+      await loadStores();
+      loadDashboard();
+    } else {
+      resultEl.innerHTML = `<div class="alert alert-danger">${data.error || 'Sync mislukt'}</div>`;
+    }
+    document.getElementById('syncCloseBtn').style.display = 'inline-flex';
+    document.getElementById('syncModalText').textContent = res.ok ? '✅ Sync voltooid!' : '❌ Sync mislukt';
+  } catch (e) {
+    document.getElementById('syncResult').innerHTML = `<div class="alert alert-danger">Verbinding mislukt: ${e.message}</div>`;
+    document.getElementById('syncResult').style.display = 'block';
+    document.getElementById('syncCloseBtn').style.display = 'inline-flex';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════
+async function loadDashboard() {
+  if (dashboardLoading) return;
+  dashboardLoading = true;
+
+  const content    = document.getElementById('dashboardContent');
+  const loading    = document.getElementById('dashboardLoading');
+  const errorDiv   = document.getElementById('dashboardError');
+  const noStores   = document.getElementById('dashboardNoStores');
+  const syncBanner = document.getElementById('syncBanner');
+  const syncBtn    = document.getElementById('syncBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  content.style.display  = 'none';
+  errorDiv.style.display = 'none';
+  noStores.style.display = 'none';
+  syncBanner.style.display = 'none';
+  loading.style.display  = 'block';
+
+  if (!await ensureSession()) { loading.style.display = 'none'; showAuthScreen(); dashboardLoading = false; return; }
+
+  if (!currentStores.length) {
+    loading.style.display  = 'none';
+    noStores.style.display = 'block';
+    dashboardLoading = false; return;
+  }
+
+  syncBtn.style.display    = 'inline-flex';
+  refreshBtn.style.display = 'inline-flex';
+  document.getElementById('livePill').style.display = 'inline-flex';
+
+  const start = document.getElementById('startDate').value;
+  const end   = document.getElementById('endDate').value;
+  let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}`;
+  if (selectedStoreId) url += `&storeId=${selectedStoreId}`;
+
+  try {
+    const res  = await fetch(url, { headers: getAuthHeaders() });
+    const data = await res.json();
+    loading.style.display = 'none';
+
+    if (!res.ok) {
+      document.getElementById('dashboardErrorMsg').textContent    = data.error || 'Fout';
+      document.getElementById('dashboardErrorDetail').textContent = data.detail || '';
+      errorDiv.style.display = 'block';
+      dashboardLoading = false; return;
+    }
+
+    // Toon sync banner als er geen data is maar wel een store
+    if (data.samenvatting.totalBestellingen === 0 && currentStores.length > 0) {
+      syncBanner.style.display = 'block';
+    }
+
+    renderDashboard(data);
+  } catch (e) {
+    loading.style.display = 'none';
+    document.getElementById('dashboardErrorMsg').textContent = 'Verbinding mislukt: ' + e.message;
+    errorDiv.style.display = 'block';
+  }
+  dashboardLoading = false;
+}
+
+function renderDashboard(data) {
+  const s = data.samenvatting || {};
+  const fmt = n => '€' + (n||0).toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+  document.getElementById('dashboardContent').style.display = 'block';
+  document.getElementById('kpiOmzet').textContent        = fmt(s.totalOmzet);
+  document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen||0).toLocaleString('nl-NL');
+  document.getElementById('kpiGem').textContent          = fmt(s.gemOmzetPerBestelling);
+  document.getElementById('kpiPeriode').textContent      = (s.periode?.start||'') + ' → ' + (s.periode?.end||'');
+
+  const perDag = data.perDag || [];
+  const actieveDagen = perDag.filter(d => d.omzet > 0).length;
+  const gemPerDag = actieveDagen > 0 ? s.totalOmzet / actieveDagen : 0;
+  document.getElementById('kpiPerDag').textContent = fmt(gemPerDag);
+
+  // Badges
+  const setBadge = (id, val, isGood) => {
+    const el = document.getElementById(id);
+    if (val === null) { el.textContent = '—'; el.className = 'kpi-badge'; return; }
+    el.textContent = val;
+    el.className = 'kpi-badge' + (isGood === false ? ' neg' : '');
+  };
+  setBadge('kpiBadge1', s.totalOmzet > 0 ? 'bol.com' : null, true);
+  setBadge('kpiBadge2', actieveDagen > 0 ? actieveDagen + ' actieve dagen' : null, true);
+  setBadge('kpiBadge3', s.gemOmzetPerBestelling > 0 ? null : null);
+  setBadge('kpiBadge4', actieveDagen > 0 ? Math.round(actieveDagen / (perDag.length||1) * 100) + '% bezetting' : null, actieveDagen / (perDag.length||1) > 0.5);
+
+  // Top producten
+  const prods = data.topProducten || [];
+  if (!prods.length) {
+    document.getElementById('topProductenTable').innerHTML = '<p style="color:var(--muted-fg);font-size:0.85rem;">Geen producten gevonden. Voer eerst een sync uit.</p>';
+  } else {
+    const maxO = Math.max(...prods.map(p => p.omzet));
+    document.getElementById('topProductenTable').innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>Product</th><th style="text-align:right">Stuks</th><th style="text-align:right">Omzet</th></tr></thead>
+      <tbody>${prods.map((p,i) => `<tr>
+        <td style="color:var(--muted-fg);font-size:0.7rem;">${i+1}</td>
+        <td>
+          <div style="font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.titel}">${p.titel}</div>
+          <div style="height:3px;background:var(--muted);border-radius:999px;margin-top:4px;"><div style="height:3px;border-radius:999px;background:var(--primary);width:${Math.round(p.omzet/maxO*100)}%"></div></div>
+        </td>
+        <td style="text-align:right">${p.stuks}</td>
+        <td style="text-align:right;font-weight:600;color:var(--primary);">${fmt(p.omzet)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+
+  // Conversie tips
+  const tips = [];
+  const gemW = s.gemOmzetPerBestelling || 0;
+  const inactPct = perDag.length > 0 ? Math.round((perDag.length - actieveDagen) / perDag.length * 100) : 0;
+  if (prods.length > 0) {
+    const top1pct = prods[0].omzet / (s.totalOmzet || 1) * 100;
+    if (top1pct > 70) tips.push({ icon:'⚠️', titel:'Productrisico', tekst:`${Math.round(top1pct)}% omzet uit 1 product. Overweeg sortiment uitbreiden.` });
+    if (prods.length > 1) tips.push({ icon:'🔗', titel:'Cross-sell kans', tekst:`Bundel "${prods[0].titel.substring(0,25)}..." met andere producten.` });
+  }
+  if (gemW < 20 && gemW > 0) tips.push({ icon:'💶', titel:'Verhoog orderwaarde', tekst:`Gem. ${fmt(gemW)}. Bied gratis verzending boven €25 aan.` });
+  if (inactPct > 40) tips.push({ icon:'📅', titel:'Onregelmatige verkoop', tekst:`${inactPct}% van de dagen geen verkoop. Overweeg dagelijks adverteren.` });
+  tips.push({ icon:'⭐', titel:'Reviews boosten', tekst:'Na levering automatisch reviewverzoek sturen via bol.com.' });
+  tips.push({ icon:'🔍', titel:'SEO optimalisatie', tekst:'Gebruik de Tekst Scorer voor je top 3 producten.' });
+  document.getElementById('conversieTips').innerHTML = tips.slice(0,5).map(t => `
+    <div style="display:flex;gap:0.75rem;margin-bottom:0.85rem;padding-bottom:0.85rem;border-bottom:1px solid var(--border);">
+      <div style="flex-shrink:0;font-size:1.1rem;">${t.icon}</div>
+      <div><div style="font-weight:600;font-size:0.82rem;margin-bottom:0.15rem;">${t.titel}</div>
+      <div style="font-size:0.78rem;color:var(--muted-fg);line-height:1.45;">${t.tekst}</div></div>
+    </div>`).join('');
+
+  // Omzet chart
+  if (perDag.length) {
+    const maxD = Math.max(...perDag.map(d => d.omzet), 1);
+    document.getElementById('omzetChart').innerHTML = `<div class="chart-bars">${
+      perDag.map(d => `<div class="bar-col" title="${d.datum}: ${fmt(d.omzet)}">
+        <div class="bar-fill" style="height:${Math.max(3, Math.round(d.omzet/maxD*110))}px"></div>
+        <div class="bar-label">${d.datum.substring(5)}</div>
+      </div>`).join('')
+    }</div>`;
+  }
+
+  // Multi-platform breakdown
+  const platforms = data.perPlatform || [];
+  if (platforms.length > 1) {
+    document.getElementById('platformCard').style.display = 'block';
+    document.getElementById('platformBreakdown').innerHTML = `<div class="kpi-grid">${
+      platforms.map(p => `<div class="kpi-card" style="padding:1rem;">
+        <div style="font-weight:600;margin-bottom:0.3rem;">${p.platform}</div>
+        <div style="font-family:var(--font-h);font-size:1.3rem;font-weight:700;color:var(--primary);">${fmt(p.omzet)}</div>
+        <div style="font-size:0.75rem;color:var(--muted-fg);">${p.bestellingen} bestellingen</div>
+      </div>`).join('')
+    }</div>`;
+  }
+
+  // Actiepunten
+  const acties = [
+    { kleur:'var(--primary)', titel:'Adverteer op bestseller', actie:`Start gesponsord product voor "${(prods[0]?.titel||'je topseller').substring(0,35)}..." met €5-10/dag.`, impact:'Hoog' },
+    { kleur:'var(--success)', titel:'Teksten optimaliseren', actie:'Gebruik de Tekst Scorer voor je top 3 producten. Alles onder 70 punten heeft verbeterpotentieel.', impact:'Middel' },
+    { kleur:'var(--info)',    titel:'Prijsstrategie testen', actie:`Gem. orderwaarde ${fmt(gemW)}. Test gratis verzending boven €${Math.round(gemW*1.3)}.`, impact:'Middel' },
+    { kleur:'hsl(280,70%,60%)', titel:'Bundel aanmaken', actie: prods.length > 1 ? `Bundel "${(prods[0]?.titel||'').substring(0,20)}..." + "${(prods[1]?.titel||'').substring(0,20)}..." voor hogere gem. orderwaarde.` : 'Voeg complementaire producten toe aan je assortiment.', impact:'Hoog' }
+  ];
+  document.getElementById('actiepuntenCard').style.display = 'block';
+  document.getElementById('actiepunten').innerHTML = acties.map(a => `
+    <div style="background:var(--card);border-radius:calc(var(--radius) - 2px);padding:1rem;border-left:3px solid ${a.kleur};">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;gap:0.5rem;">
+        <div style="font-weight:600;font-size:0.83rem;">${a.titel}</div>
+        <span class="pill pill-${a.impact==='Hoog'?'orange':'blue'}" style="white-space:nowrap;flex-shrink:0;">${a.impact}</span>
+      </div>
+      <div style="font-size:0.77rem;color:var(--muted-fg);line-height:1.45;">${a.actie}</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ANALYSE (CSV upload + live API fallback) — preserved from v1
+// ═══════════════════════════════════════════════════════════
+function handleFileUpload(e) { const f = e.target.files[0]; if (f) processFile(f); }
+function processFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const firstLine = text.split('\n')[0];
+      const delimiter = (firstLine.split(';').length > firstLine.split(',').length) ? ';' : ',';
+      function parseCSVLine(line, delim) {
+        const result=[]; let current=''; let inQuotes=false;
+        for (let i=0;i<line.length;i++) {
+          const ch=line[i];
+          if (ch==='"') { if(inQuotes&&line[i+1]==='"'){current+='"';i++;}else inQuotes=!inQuotes; }
+          else if (ch===delim&&!inQuotes){result.push(current.trim());current='';}
+          else current+=ch;
+        }
+        result.push(current.trim()); return result;
+      }
+      const lines = text.split('\n').filter(r=>r.trim());
+      if (lines.length<2) { showDemoData(); return; }
+      const headers = parseCSVLine(lines[0], delimiter);
+      const rows = lines.slice(1).map(line => {
+        const vals = parseCSVLine(line, delimiter);
+        const obj = {};
+        headers.forEach((h,i) => obj[h.trim()]=vals[i]?.trim()||'');
+        return obj;
+      }).filter(r=>Object.values(r).some(v=>v));
+      if (rows.length===0) { showDemoData(); return; }
+      analyzeData(rows);
+    } catch { showDemoData(); }
+  };
+  reader.readAsText(file);
+}
+
+function showDemoData() {
+  analyzeData([
+    {'Productnaam':'TheWootz Snijplank Eiken XL','Advertentie-uitgaven':'45.20','Vertoningen':'12400','Klikken':'89','Bestellingen':'8','Omzet':'319.60'},
+    {'Productnaam':'TheWootz Onderhoudsolie 250ml','Advertentie-uitgaven':'18.50','Vertoningen':'8200','Klikken':'45','Bestellingen':'5','Omzet':'74.95'},
+    {'Productnaam':'TheWootz Snijplank Walnoot M','Advertentie-uitgaven':'32.10','Vertoningen':'6800','Klikken':'52','Bestellingen':'4','Omzet':'159.80'},
+    {'Productnaam':'TheWootz Cadeau Set Premium','Advertentie-uitgaven':'67.80','Vertoningen':'15200','Klikken':'124','Bestellingen':'7','Omzet':'419.65'},
+    {'Productnaam':'TheWootz Snijplank Bamboe S','Advertentie-uitgaven':'12.40','Vertoningen':'4100','Klikken':'28','Bestellingen':'2','Omzet':'39.90'},
+  ]);
+}
+
+function analyzeData(rows) {
+  if (!rows.length) { showDemoData(); return; }
+  const nameKey = Object.keys(rows[0]).find(k => /naam|name|product|titel|title/i.test(k)) || Object.keys(rows[0])[0];
+  const getNum = (row, ...keys) => {
+    for (const k of keys) {
+      const match = Object.keys(row).find(rk => rk.toLowerCase().includes(k.toLowerCase()));
+      if (match) return parseFloat((row[match]||'0').toString().replace(',','.').replace(/[^0-9.-]/g,''))||0;
+    }
+    return 0;
+  };
+  const products = rows.map(row => ({
+    naam: row[nameKey]||'Onbekend', spend: getNum(row,'uitg','spend','cost','kosten'), impressions: getNum(row,'vert','impr'),
+    clicks: getNum(row,'klik','click'), orders: getNum(row,'best','order','conv'), revenue: getNum(row,'omzet','omz','revenue','sales')
+  })).filter(p=>p.spend>0||p.revenue>0);
+  if (!products.length) { showDemoData(); return; }
+
+  const totSpend=products.reduce((s,p)=>s+p.spend,0), totRev=products.reduce((s,p)=>s+p.revenue,0), totOrders=products.reduce((s,p)=>s+p.orders,0), totClicks=products.reduce((s,p)=>s+p.clicks,0);
+  const roas=totSpend>0?totRev/totSpend:0, cpc=totClicks>0?totSpend/totClicks:0, cr=totClicks>0?totOrders/totClicks*100:0;
+  const productsWithConv = products.map(p=>({...p, conv:p.clicks>0?p.orders/p.clicks*100:0, roas:p.spend>0?p.revenue/p.spend:0})).sort((a,b)=>b.roas-a.roas);
+
+  const fmt=(n)=>'€'+n.toLocaleString('nl-NL',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('kpiGrid').innerHTML=`<div class="kpi-grid" style="margin-top:1rem;margin-bottom:0;">
+    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">💰</div></div><div class="kpi-value">${fmt(totSpend)}</div><div class="kpi-label">Totale uitgaven</div></div>
+    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">📈</div></div><div class="kpi-value">${roas.toFixed(2)}x</div><div class="kpi-label">ROAS</div></div>
+    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">🖱️</div></div><div class="kpi-value">${fmt(cpc)}</div><div class="kpi-label">CPC</div></div>
+    <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">🎯</div></div><div class="kpi-value">${cr.toFixed(1)}%</div><div class="kpi-label">Conversiepercentage</div></div>
+  </div>`;
+
+  const top3=productsWithConv.slice(0,3), worst3=[...productsWithConv].sort((a,b)=>a.roas-b.roas).slice(0,3);
+  document.getElementById('topWorstGrid').style.display='grid';
+  document.getElementById('topConverters').innerHTML=top3.map((p,i)=>`<div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);"><div style="font-size:1rem;width:24px;text-align:center;">${['🥇','🥈','🥉'][i]}</div><div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.naam}</div><div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Conv: ${p.conv.toFixed(1)}%</div></div></div>`).join('');
+  document.getElementById('worstPerformers').innerHTML=worst3.map(p=>`<div style="display:flex;align-items:center;gap:0.75rem;padding:0.65rem 0;border-bottom:1px solid var(--border);"><div style="font-size:1rem;width:24px;text-align:center;">⚠️</div><div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.naam}</div><div style="font-size:0.72rem;color:var(--muted-fg);">ROAS: ${p.roas.toFixed(1)}x · Uitgave: ${fmt(p.spend)}</div></div></div>`).join('');
+
+  // Full table
+  document.getElementById('analysePlaceholder').style.display='none';
+  document.getElementById('analyseResults').style.display='block';
+  const thead=document.querySelector('#fullTable thead tr');
+  thead.innerHTML='<th>Product</th><th>Uitgaven</th><th>Klikken</th><th>Bestellingen</th><th>Omzet</th><th>ROAS</th><th>Conv.%</th>';
+  document.getElementById('fullTableBody').innerHTML=productsWithConv.map(p=>`<tr>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.naam}">${p.naam}</td>
+    <td>${fmt(p.spend)}</td><td>${p.clicks.toLocaleString('nl-NL')}</td><td>${p.orders}</td>
+    <td>${fmt(p.revenue)}</td>
+    <td style="font-weight:600;color:${p.roas>=2?'var(--success)':p.roas>=1?'var(--warning)':'var(--danger)'};">${p.roas.toFixed(2)}x</td>
+    <td>${p.conv.toFixed(1)}%</td>
+  </tr>`).join('');
+
+  // Recommendations
+  const recs=[];
+  if(roas<1.5)recs.push({type:'warning',msg:'Je totale ROAS is laag (<1.5x). Overweeg budget te verschuiven naar beter presterende producten.'});
+  worst3.filter(p=>p.spend>10&&p.roas<1).forEach(p=>recs.push({type:'danger',msg:`Stop of pauzeer advertentie voor "${p.naam.substring(0,40)}" — negatieve ROAS.`}));
+  top3.slice(0,1).forEach(p=>recs.push({type:'success',msg:`Verhoog budget voor "${p.naam.substring(0,40)}" — beste presteerder (ROAS ${p.roas.toFixed(1)}x).`}));
+  document.getElementById('recommendations').innerHTML=recs.map(r=>`<div class="alert alert-${r.type==='danger'?'danger':r.type==='success'?'success':'warning'}" style="margin-top:0.5rem;">${r.msg}</div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// TEKST SCORER — preserved from v1
+// ═══════════════════════════════════════════════════════════
+async function fetchBolProduct(target) {
+  const urlEl = document.getElementById(target==='scorer'?'scorerBolUrl':'genBolUrl');
+  const url = urlEl.value.trim();
+  if (!url || !url.includes('bol.com')) { alert('Vul een geldige bol.com product URL in'); return; }
+  const btn = document.getElementById(target==='scorer'?'scorerFetchBtn':'genFetchBtn');
+  btn.disabled=true; btn.textContent='⏳ Laden...';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:800, messages:[{role:'user',content:`Analyseer deze bol.com URL en geef ALLEEN JSON: {"titel":"...","beschrijving":"...","bullets":"..."}\n\nURL: ${url}`}] }) });
+    const data = await resp.json();
+    const parsed = JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim());
+    if (target==='scorer') {
+      document.getElementById('scorerTitle').value=parsed.titel||'';
+      document.getElementById('scorerDesc').value=parsed.beschrijving||'';
+      document.getElementById('scorerBullets').value=parsed.bullets||'';
+    } else {
+      document.getElementById('genFeatures').value=(parsed.bullets||parsed.beschrijving||'').substring(0,300);
+    }
+  } catch {}
+  btn.disabled=false; btn.textContent='📥 Importeer';
+}
+
+async function scoreText() {
+  const title   = document.getElementById('scorerTitle').value;
+  const desc    = document.getElementById('scorerDesc').value;
+  const bullets = document.getElementById('scorerBullets').value;
+  if (!title && !desc) { alert('Vul minimaal een titel en beschrijving in'); return; }
+  const btn = document.getElementById('scoreBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyseren...';
+  document.getElementById('scoreResults').innerHTML='<div class="empty-state"><span class="spinner spinner-lg"></span><p style="margin-top:1rem;color:var(--muted-fg);">Analyseren...</p></div>';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1200, messages:[{role:'user',content:`Analyseer deze bol.com producttekst en geef ALLEEN JSON:\n{"totaalScore":85,"gradeLetter":"B","categorieScores":{"titelOptimalisatie":80,"beschrijvingKwaliteit":85,"bulletpointEffectiviteit":90,"zoekwoordIntegratie":75,"conversiegerichtheid":88},"sterktePunten":["...","...","..."],"verbeterPunten":["...","...","..."],"topAanbeveling":"..."}\n\nTitel: ${title}\nBeschrijving: ${desc}\nBullets: ${bullets}`}] }) });
+    const data = await resp.json();
+    const json = JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim());
+    renderScoreResults(json);
+  } catch { renderScoreResults({totaalScore:74,gradeLetter:'C',categorieScores:{titelOptimalisatie:68,beschrijvingKwaliteit:78,bulletpointEffectiviteit:72,zoekwoordIntegratie:65,conversiegerichtheid:80},sterktePunten:['Duidelijke productvoordelen beschreven','Doelgroep helder geïdentificeerd'],verbeterPunten:['Voeg meer zoekwoorden toe aan titel','Bullets zijn te kort — meer detail nodig'],topAanbeveling:'Voeg het woord "snijplank" + houtsoort toe in je titel voor betere vindbaarheid.'}); }
+  btn.disabled=false; btn.innerHTML='🎯 Analyseer tekst';
+}
+function renderScoreResults(json) {
+  const clr = json.totaalScore>=80?'var(--success)':json.totaalScore>=60?'var(--warning)':'var(--danger)';
+  document.getElementById('scoreResults').innerHTML=`<div class="card fade-in">
+    <div style="text-align:center;padding:1.5rem 0;">
+      <div style="font-family:var(--font-h);font-size:4rem;font-weight:700;color:${clr};line-height:1;">${json.totaalScore}</div>
+      <div style="font-size:0.75rem;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;margin-top:0.25rem;color:${clr};">Score · ${json.gradeLetter}</div>
+    </div>
+    <hr class="divider">
+    ${Object.entries(json.categorieScores||{}).map(([k,v])=>`<div style="margin-bottom:0.65rem;">
+      <div style="display:flex;justify-content:space-between;font-size:0.78rem;margin-bottom:0.3rem;">
+        <span>${k.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())}</span><span style="font-weight:600;">${v}/100</span>
+      </div>
+      <div style="background:var(--muted);border-radius:999px;height:5px;"><div style="height:5px;border-radius:999px;background:${v>=80?'var(--success)':v>=60?'var(--warning)':'var(--danger)'};width:${v}%;"></div></div>
+    </div>`).join('')}
+    <hr class="divider">
+    <div style="margin-bottom:1rem;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:0.5rem;">✅ Sterktes</div>${(json.sterktePunten||[]).map(s=>`<div style="font-size:0.78rem;padding:0.2rem 0;color:var(--muted-fg);">• ${s}</div>`).join('')}</div>
+    <div style="margin-bottom:1rem;"><div style="font-weight:600;font-size:0.82rem;margin-bottom:0.5rem;">⚡ Verbeterpunten</div>${(json.verbeterPunten||[]).map(v=>`<div style="font-size:0.78rem;padding:0.2rem 0;color:var(--muted-fg);">• ${v}</div>`).join('')}</div>
+    <div class="alert alert-orange"><strong>💡 Top aanbeveling:</strong> ${json.topAanbeveling}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// TEKST GENERATOR — preserved from v1
+// ═══════════════════════════════════════════════════════════
+async function generateText() {
+  const houtsoort=document.getElementById('genHoutsoort').value, afmeting=document.getElementById('genAfmeting').value||'niet opgegeven';
+  const features=document.getElementById('genFeatures').value, doelgroep=document.getElementById('genDoelgroep').value;
+  const toon=document.getElementById('genToon').value, prijs=document.getElementById('genPrijs').value||'niet opgegeven';
+  const btn=document.getElementById('genBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Genereren...';
+  document.getElementById('genOutput').innerHTML='<div class="empty-state"><span class="spinner spinner-lg"></span><p style="margin-top:1rem;color:var(--muted-fg);">AI schrijft je tekst...</p></div>';
+  try {
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:`Je bent een expert bol.com copywriter. Schrijf een hoog-converterende listing. ALLEEN JSON:\n{"titel":"<max 120 tekens>","beschrijving":"<200-300 woorden>","bulletpoints":["<v1>","<v2>","<v3>","<v4>","<v5>"],"zoekwoorden":["<kw1>","<kw2>","<kw3>","<kw4>","<kw5>"],"tipsVoorFotos":["<t1>","<t2>","<t3>"]}\n\nHoutsoort: ${houtsoort}\nAfmeting: ${afmeting}\nKenmerken: ${features}\nDoelgroep: ${doelgroep}\nToon: ${toon}\nPrijs: €${prijs}`}]})});
+    const data=await resp.json();
+    renderGenOutput(JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim()));
+  } catch(e) {
+    renderGenOutput({titel:`${houtsoort} Snijplank ${afmeting} | Handgemaakt | Sapgeul`,beschrijving:'Massief hout met tijdloze uitstraling.',bulletpoints:['✓ Massief hout','✓ Sapgeul rondom','✓ Anti-slip','✓ Voedselveilig','✓ Cadeau-verpakking'],zoekwoorden:['snijplank','houten snijplank','snijplank cadeau'],tipsVoorFotos:['Lifestyle shot','Detail houtnerf','Cadeau verpakking']});
+  }
+  btn.disabled=false; btn.innerHTML='✨ Genereer geoptimaliseerde tekst';
+}
+function renderGenOutput(json) {
+  document.getElementById('genOutput').innerHTML=`<div class="card fade-in">
+    <div class="card-title">📋 Gegenereerde Listing</div>
+    <div style="margin-bottom:1.25rem;"><label>Producttitel</label><div style="background:var(--accent);padding:0.85rem;border-radius:0.5rem;font-weight:600;border-left:3px solid var(--primary);">${json.titel}</div><div style="font-size:0.7rem;color:var(--muted-fg);margin-top:0.25rem;">${json.titel.length} tekens</div></div>
+    <div style="margin-bottom:1.25rem;"><label>Beschrijving</label><div class="output-box"><button class="copy-btn" onclick="navigator.clipboard.writeText(this.nextSibling.textContent.trim());this.textContent='✓'">Kopieer</button><span>${json.beschrijving.replace(/\n/g,'<br>')}</span></div></div>
+    <div style="margin-bottom:1.25rem;"><label>Bullet Points</label>${json.bulletpoints.map(b=>`<div style="padding:0.5rem 0.85rem;background:var(--muted);border-radius:0.4rem;margin-bottom:0.3rem;font-size:0.83rem;">${b}</div>`).join('')}</div>
+    <hr class="divider">
+    <div class="grid-2">
+      <div><label>Zoekwoorden</label><div style="display:flex;flex-wrap:wrap;gap:0.3rem;margin-top:0.25rem;">${json.zoekwoorden.map(k=>`<span class="tag">${k}</span>`).join('')}</div></div>
+      <div><label>Tips voor foto's</label>${json.tipsVoorFotos.map(t=>`<div style="font-size:0.77rem;padding:0.2rem 0;color:var(--muted-fg);">📸 ${t}</div>`).join('')}</div>
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText('TITEL:\\n${json.titel.replace(/'/g,"\\'")}\\n\\nBESCHRIJVING:\\n${json.beschrijving.replace(/'/g,"\\'")}');this.textContent='✓ Gekopieerd'">📋 Alles kopiëren</button>
+      <button class="btn btn-ghost btn-sm" onclick="switchTab('scorer');setTimeout(()=>{document.getElementById('scorerTitle').value='${json.titel.replace(/'/g,"\\'")}';},100)">🎯 Score deze tekst</button>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CONCURRENTIE — preserved from v1
+// ═══════════════════════════════════════════════════════════
+async function analyzeCompetitors() {
+  const searchTerm=document.getElementById('concSearchTerm').value||'houten snijplank';
+  const segment=document.getElementById('concSegment').value;
+  const btn=document.getElementById('concBtn'); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analyseren...';
+  document.getElementById('concPlaceholder').style.display='none';
+  document.getElementById('concResults').style.display='block';
+  document.getElementById('concResults').innerHTML='<div class="empty-state"><span class="spinner spinner-lg"></span><p style="margin-top:1rem;color:var(--muted-fg);">AI analyseert concurrenten...</p></div>';
+  try {
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1500,messages:[{role:'user',content:`Je bent bol.com marktonderzoeker. Analyseer "${segment}" voor "${searchTerm}". ALLEEN JSON:\n{"marktsamenvatting":"...","gemConversieSegment":7,"gemPrijs":42,"topConcurrenten":[{"naam":"...","type":"...","prijsRange":"...","reviews":"...","sterkeKenmerken":["..."],"zwakteVoorJou":"..."}],"winnendeTekstStrategieen":[{"strategie":"...","uitleg":"...","voorbeeld":"..."}],"kansen":["...","...","..."],"aanbevelingVoorTheWootz":"..."}`}]})});
+    const data=await resp.json();
+    renderCompetitors(JSON.parse(data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim()),searchTerm,segment);
+  } catch { renderCompetitors({marktsamenvatting:'Competitief maar gefragmenteerd segment.',gemConversieSegment:7.4,gemPrijs:42,topConcurrenten:[{naam:'Burkle Home',type:'Eiken Set',prijsRange:'€39-€59',reviews:'4.8 (891)',sterkeKenmerken:['Sapgeul','Cadeau'],zwakteVoorJou:'Geen personalisatie'},{naam:'Zassenhaus',type:'Walnoot XL',prijsRange:'€54-€79',reviews:'4.7 (423)',sterkeKenmerken:['Massief walnoot'],zwakteVoorJou:'Hoge prijs'},{naam:'Continenta',type:'Bamboe 3-delig',prijsRange:'€24-€34',reviews:'4.5 (1204)',sterkeKenmerken:['Prijs-kwaliteit'],zwakteVoorJou:'Bamboe = goedkoper gevoel'}],winnendeTekstStrategieen:[{strategie:'Emotionele opening',uitleg:'Start met een scenario.',voorbeeld:'"Stel je voor..."'},{strategie:'Sociale bewijslast',uitleg:'Reviews in eerste 50 woorden.',voorbeeld:'"10.000+ tevreden kokers"'}],kansen:['Geen concurrent met personalisatie','Cadeau-markt onderbenut'],aanbevelingVoorTheWootz:'Positioneer als ambachtelijk alternatief met personalisatie-optie.'},searchTerm,segment); }
+  btn.disabled=false; btn.innerHTML='🔍 Analyseer concurrenten';
+}
+function renderCompetitors(json,searchTerm,segment) {
+  const fmt=n=>'€'+n.toLocaleString('nl-NL',{minimumFractionDigits:0,maximumFractionDigits:0});
+  document.getElementById('concResults').innerHTML=`
+    <div class="kpi-grid" style="margin-bottom:1.25rem;">
+      <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">📊</div></div><div class="kpi-value">${json.gemConversieSegment}%</div><div class="kpi-label">Gem. conversie</div></div>
+      <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">💶</div></div><div class="kpi-value">${fmt(json.gemPrijs)}</div><div class="kpi-label">Gem. prijs</div></div>
+      <div class="kpi-card"><div class="kpi-top"><div class="kpi-icon">🔍</div></div><div class="kpi-value">${json.topConcurrenten?.length||0}</div><div class="kpi-label">Concurrenten</div></div>
+    </div>
+    <div class="card"><div class="card-title">Marktsamenvatting</div><div style="font-size:0.88rem;line-height:1.7;color:var(--muted-fg);">${json.marktsamenvatting}</div></div>
+    <div class="card"><div class="card-title">🏆 Top Concurrenten — "${searchTerm}"</div><div class="grid-2">${(json.topConcurrenten||[]).map((c,i)=>`<div class="competitor-card"><div class="competitor-rank">#${i+1}</div><div class="competitor-name">${c.naam}</div><div class="competitor-meta">${c.type} · ${c.prijsRange} · ⭐ ${c.reviews}</div><div style="margin-bottom:0.75rem;">${(c.sterkeKenmerken||[]).map(k=>`<span class="tag">${k}</span>`).join('')}</div><div style="background:var(--accent);border-left:2px solid var(--primary);padding:0.6rem;border-radius:4px;"><div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--primary);margin-bottom:0.2rem;">Kans</div><div style="font-size:0.78rem;color:var(--accent-fg);">${c.zwakteVoorJou}</div></div></div>`).join('')}</div></div>
+    <div class="card"><div class="card-title">✍️ Winnende Strategieën</div>${(json.winnendeTekstStrategieen||[]).map(s=>`<div style="padding:0.85rem 0;border-bottom:1px solid var(--border);"><div style="font-weight:600;font-size:0.88rem;margin-bottom:0.25rem;">${s.strategie}</div><div style="font-size:0.8rem;color:var(--muted-fg);margin-bottom:0.5rem;">${s.uitleg}</div><div style="background:var(--fg);color:var(--bg);padding:0.5rem 0.85rem;border-radius:0.4rem;font-size:0.8rem;font-style:italic;">"${s.voorbeeld}"</div></div>`).join('')}</div>
+    <div class="grid-2">
+      <div class="card"><div class="card-title">💡 Kansen</div>${(json.kansen||[]).map((k,i)=>`<div style="display:flex;gap:0.65rem;padding:0.5rem 0;border-bottom:1px solid var(--border);font-size:0.83rem;"><span style="color:var(--primary);font-weight:700;">${i+1}.</span><span>${k}</span></div>`).join('')}</div>
+      <div class="card" style="border:2px solid var(--primary);background:var(--accent);"><div class="card-title" style="color:var(--accent-fg);">🎯 Aanbeveling</div><div style="font-size:0.87rem;line-height:1.7;color:var(--accent-fg);">${json.aanbevelingVoorTheWootz}</div><div style="margin-top:1rem;"><button class="btn btn-primary btn-sm" onclick="switchTab('generator')">→ Tekst Generator</button></div></div>
+    </div>`;
+}

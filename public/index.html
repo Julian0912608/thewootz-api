@@ -1060,44 +1060,83 @@ textarea { resize: vertical; min-height: 100px; }
 
       <!-- ══ ANALYSE TAB ══ -->
       <div class="tab-panel" id="tab-analyse">
-        <div class="page-header">
-          <h1 class="page-title">Advertentie Analyse</h1>
-          <p class="page-sub">Upload je bol.com advertentie-rapportage en ontdek wat je conversie saboteert.</p>
-        </div>
-        <div class="grid-2" style="align-items:start;">
+        <div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
           <div>
-            <div class="card">
-              <div class="card-title">Advertentie Analyse</div>
-              <div class="upload-zone" id="uploadZone" onclick="document.getElementById('csvInput').click()">
-                <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" onchange="handleFileUpload(event)">
-                <div class="upload-icon">📤</div>
-                <div class="upload-title">Sleep je CSV hier naartoe</div>
-                <div class="upload-sub">of klik om te bladeren · CSV, XLSX · max 10MB</div>
-              </div>
-              <div class="alert alert-orange" style="margin-top:1rem;font-size:0.75rem;">
-                💡 Exporteer via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV
-              </div>
+            <h1 class="page-title">Advertentie Analyse</h1>
+            <p class="page-sub">Analyseer je bol.com advertentie-rapportage en ontdek wat je conversie saboteert.</p>
+          </div>
+          <div style="display:flex;gap:0.5rem;align-items:center;flex-shrink:0;">
+            <select id="analyseDatasetSelect" class="form-input" style="font-size:0.8rem;padding:0.4rem 0.6rem;display:none;" onchange="loadAnalyseDataset(this.value)">
+              <option value="">— Opgeslagen datasets —</option>
+            </select>
+            <button class="btn btn-ghost btn-sm" id="saveDatasetBtn" style="display:none;" onclick="saveAnalyseDataset()">💾 Opslaan</button>
+            <button class="btn btn-primary btn-sm" onclick="openUploadModal()">📤 Nieuwe data</button>
+          </div>
+        </div>
+
+        <!-- Leeg scherm -->
+        <div id="analyseEmpty">
+          <div class="card" style="text-align:center;padding:3rem;">
+            <div style="font-size:2.5rem;margin-bottom:1rem;">📊</div>
+            <h3 style="font-family:var(--font-h);margin-bottom:0.5rem;">Upload je advertentiedata</h3>
+            <p style="color:var(--muted-fg);font-size:0.85rem;margin-bottom:0.5rem;">Exporteer via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV</p>
+            <p style="color:var(--muted-fg);font-size:0.8rem;margin-bottom:1.5rem;">Of laad een eerder opgeslagen dataset.</p>
+            <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="openUploadModal()">📤 CSV uploaden</button>
+              <button class="btn btn-ghost" onclick="showDemoData()">📊 Demo data bekijken</button>
             </div>
-            <div id="kpiGrid"></div>
-            <div class="grid-2" id="topWorstGrid" style="display:none;">
+          </div>
+        </div>
+
+        <!-- Data aanwezig -->
+        <div id="analyseContent" style="display:none;" class="fade-in">
+
+          <!-- KPI rij -->
+          <div id="kpiGrid" style="margin-bottom:1.5rem;"></div>
+
+          <!-- Tips + Top/Worst -->
+          <div class="grid-2" style="margin-bottom:1.5rem;">
+            <div class="grid-2" id="topWorstGrid">
               <div class="card"><div class="card-title">🏆 Top Converterend</div><div id="topConverters"></div></div>
               <div class="card"><div class="card-title">⚠️ Onderpresteerders</div><div id="worstPerformers"></div></div>
             </div>
-            <div id="recommendations"></div>
+            <div class="card" id="recommendations"></div>
           </div>
-          <div class="card" id="allProductsCard">
-            <div class="card-title">Alle Producten</div>
-            <div class="card-sub">Overzicht van je advertentie prestaties</div>
-            <div id="analysePlaceholder">
-              <div class="empty-state" style="padding:3rem 1rem;">
-                <div class="empty-icon">📂</div>
-                <p>Upload een CSV om data te zien</p>
-                <button class="btn btn-ghost" style="margin-top:1rem;" onclick="showDemoData()">📊 Bekijk demo data</button>
+
+          <!-- Alle producten tabel -->
+          <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+              <div class="card-title" style="margin:0;">📋 Alle producten</div>
+              <div style="display:flex;gap:0.5rem;align-items:center;">
+                <input type="text" id="analyseFilter" placeholder="Zoek product..." style="padding:0.35rem 0.65rem;border:1px solid var(--border);border-radius:var(--radius);font-size:0.78rem;background:var(--input);color:var(--fg);width:160px;" oninput="filterAnalyseTable(this.value)">
               </div>
             </div>
-            <div id="analyseResults" style="display:none;">
-              <div class="table-wrap"><table id="fullTable"><thead><tr></tr></thead><tbody id="fullTableBody"></tbody></table></div>
+            <div id="analyseResults">
+              <div class="table-wrap"><table id="fullTable"><thead id="fullTableHead"></thead><tbody id="fullTableBody"></tbody></table></div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ UPLOAD MODAL ══ -->
+      <div class="modal-backdrop" id="uploadModal">
+        <div class="modal" style="max-width:520px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+            <div class="modal-title">📤 Nieuwe advertentiedata</div>
+            <button onclick="closeUploadModal()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--muted-fg);">✕</button>
+          </div>
+          <div class="modal-sub">Upload een nieuwe CSV of XLSX export vanuit het bol.com Partnerplatform.</div>
+          <div class="upload-zone" id="uploadZone" onclick="document.getElementById('csvInput').click()" style="margin-bottom:1rem;">
+            <input type="file" id="csvInput" accept=".csv,.xlsx,.xls" onchange="handleFileUpload(event)">
+            <div class="upload-icon">📤</div>
+            <div class="upload-title">Sleep je CSV hier naartoe</div>
+            <div class="upload-sub">of klik om te bladeren · CSV, XLSX · max 10MB</div>
+          </div>
+          <div class="alert alert-orange" style="font-size:0.75rem;margin-bottom:1rem;">
+            💡 Exporteer via: Bol.com Partnerplatform → Adverteren → Rapporten → Download CSV
+          </div>
+          <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+            <button class="btn btn-ghost" onclick="closeUploadModal()">Annuleren</button>
           </div>
         </div>
       </div>

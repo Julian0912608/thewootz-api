@@ -55,8 +55,10 @@ export default async function handler(req, res) {
   const filteredItems = (items || []).filter(i => orderIds.has(i.order_id));
 
   // ── STATISTIEKEN ──────────────────────────────────────────
+  const BTW = 1.21;
+  const exBtw = (b) => b / BTW;
   const totalBestellingen = (orders || []).length;
-  const totalOmzet = (orders || []).reduce((sum, o) => sum + (o.total_amount || 0), 0);
+  const totalOmzet = (orders || []).reduce((sum, o) => sum + exBtw(o.total_amount || 0), 0);
   const gemOmzet = totalBestellingen > 0 ? totalOmzet / totalBestellingen : 0;
 
   // Top producten
@@ -67,7 +69,7 @@ export default async function handler(req, res) {
       productMap[key] = { titel: item.product_title || 'Onbekend', ean: item.product_ean, stuks: 0, omzet: 0 };
     }
     productMap[key].stuks += item.quantity || 1;
-    productMap[key].omzet += item.total_price || 0;
+    productMap[key].omzet += exBtw(item.total_price || 0);
   });
 
   // Per dag omzet
@@ -76,7 +78,7 @@ export default async function handler(req, res) {
     const dag = o.order_date;
     if (!dagMap[dag]) dagMap[dag] = { datum: dag, bestellingen: 0, omzet: 0 };
     dagMap[dag].bestellingen++;
-    dagMap[dag].omzet += o.total_amount || 0;
+    dagMap[dag].omzet += exBtw(o.total_amount || 0);
   });
 
   // Per platform breakdown (voor multi-platform view)
@@ -85,7 +87,7 @@ export default async function handler(req, res) {
     const p = o.platform || 'onbekend';
     if (!platformMap[p]) platformMap[p] = { platform: p, bestellingen: 0, omzet: 0 };
     platformMap[p].bestellingen++;
-    platformMap[p].omzet += o.total_amount || 0;
+    platformMap[p].omzet += exBtw(o.total_amount || 0);
   });
 
   // Vullen alle dagen in de periode (ook dagen zonder omzet)

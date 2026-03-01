@@ -3,6 +3,10 @@
   "functions": {
     "api/**/*.js": { "maxDuration": 30 }
   },
+  "routes": [
+    { "src": "/app.js", "dest": "/public/app.js" },
+    { "src": "/", "dest": "/public/index.html" }
+  ],
   "crons": [
     {
       "path": "/api/cron/sync-orders",

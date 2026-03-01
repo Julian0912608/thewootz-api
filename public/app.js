@@ -577,7 +577,7 @@ async function loadDashboard() {
 
   const start = document.getElementById('startDate').value;
   const end   = document.getElementById('endDate').value;
-  let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}`;
+  let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
   if (selectedStoreId) url += `&storeId=${selectedStoreId}`;
 
   try {
@@ -606,63 +606,207 @@ async function loadDashboard() {
   dashboardLoading = false;
 }
 
+// Vergelijkmodus: 0=vorige periode, 1=vorig jaar, 2=geen
+let compareMode = 0;
+let lastDashboardData = null;
+let omzetChart = null;
+let productChart = null;
+
+function setCompare(mode) {
+  compareMode = mode;
+  [0,1,2].forEach(i => {
+    const btn = document.getElementById('cmpBtn' + i);
+    if (btn) btn.className = i === mode ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+  });
+  if (lastDashboardData) renderDashboard(lastDashboardData);
+}
+
 function renderDashboard(data) {
-  const s = data.samenvatting || {};
+  lastDashboardData = data;
+  const s   = data.samenvatting || {};
   const fmt = n => '€' + (n||0).toLocaleString('nl-NL', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const fmtPct = (curr, prev) => {
+    if (!prev || prev === 0) return null;
+    const pct = Math.round((curr - prev) / prev * 100);
+    return { pct, label: (pct >= 0 ? '+' : '') + pct + '%', pos: pct >= 0 };
+  };
 
   document.getElementById('dashboardContent').style.display = 'block';
-  document.getElementById('kpiOmzet').textContent        = fmt(s.totalOmzet);
-  document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen||0).toLocaleString('nl-NL');
-  document.getElementById('kpiGem').textContent          = fmt(s.gemOmzetPerBestelling);
-  document.getElementById('kpiPeriode').textContent      = (s.periode?.start||'') + ' → ' + (s.periode?.end||'');
 
   const perDag = data.perDag || [];
   const actieveDagen = perDag.filter(d => d.omzet > 0).length;
   const gemPerDag = actieveDagen > 0 ? s.totalOmzet / actieveDagen : 0;
-  document.getElementById('kpiPerDag').textContent = fmt(gemPerDag);
 
-  // Badges
-  const setBadge = (id, val, isGood) => {
+  // ── Vergelijkperiode ophalen ───────────────────────────────
+  const cmpData = data.vergelijking || null;
+  const cmpS    = cmpData?.samenvatting || null;
+  const cmpDag  = cmpData?.perDag || [];
+
+  // Labels voor vergelijking
+  const cmpLabels = ['Vorige periode', 'Vorig jaar', ''];
+  document.getElementById('cmpLabel').textContent = compareMode < 2 && cmpS ? `vs. ${cmpLabels[compareMode]}` : '';
+  const cmpLegend = document.getElementById('cmpLegend');
+  if (cmpLegend) cmpLegend.style.display = compareMode < 2 && cmpS ? '' : 'none';
+
+  // ── KPI values ────────────────────────────────────────────
+  document.getElementById('kpiOmzet').textContent        = fmt(s.totalOmzet);
+  document.getElementById('kpiBestellingen').textContent = (s.totalBestellingen||0).toLocaleString('nl-NL');
+  document.getElementById('kpiGem').textContent          = fmt(s.gemOmzetPerBestelling);
+  document.getElementById('kpiPeriode').textContent      = (s.periode?.start||'') + ' → ' + (s.periode?.end||'');
+  document.getElementById('kpiPerDag').textContent       = fmt(gemPerDag);
+
+  // ── KPI badges met vergelijking ───────────────────────────
+  const setBadge = (id, text, isPos) => {
     const el = document.getElementById(id);
-    if (val === null) { el.textContent = '—'; el.className = 'kpi-badge'; return; }
-    el.textContent = val;
-    el.className = 'kpi-badge' + (isGood === false ? ' neg' : '');
+    if (!el) return;
+    if (!text) { el.textContent = '—'; el.className = 'kpi-badge'; return; }
+    el.textContent = text;
+    el.className = 'kpi-badge' + (isPos === false ? ' neg' : '');
   };
-  setBadge('kpiBadge1', s.totalOmzet > 0 ? 'bol.com' : null, true);
-  setBadge('kpiBadge2', actieveDagen > 0 ? actieveDagen + ' actieve dagen' : null, true);
-  setBadge('kpiBadge3', s.gemOmzetPerBestelling > 0 ? null : null);
+
+  if (compareMode < 2 && cmpS) {
+    const o = fmtPct(s.totalOmzet,          cmpS.totalOmzet);
+    const b = fmtPct(s.totalBestellingen,    cmpS.totalBestellingen);
+    const g = fmtPct(s.gemOmzetPerBestelling, cmpS.gemOmzetPerBestelling);
+    setBadge('kpiBadge1', o?.label, o?.pos);
+    setBadge('kpiBadge2', b?.label, b?.pos);
+    setBadge('kpiBadge3', g?.label, g?.pos);
+  } else {
+    setBadge('kpiBadge1', s.totalOmzet > 0 ? 'bol.com' : null, true);
+    setBadge('kpiBadge2', actieveDagen > 0 ? actieveDagen + ' actieve dagen' : null, true);
+    setBadge('kpiBadge3', null);
+  }
   setBadge('kpiBadge4', actieveDagen > 0 ? Math.round(actieveDagen / (perDag.length||1) * 100) + '% bezetting' : null, actieveDagen / (perDag.length||1) > 0.5);
 
-  // Top producten
+  // ── Omzet lijnGrafiek ─────────────────────────────────────
+  const labels   = perDag.map(d => d.datum.substring(5)); // MM-DD
+  const omzetNu  = perDag.map(d => Math.round(d.omzet * 100) / 100);
+  const omzetCmp = cmpDag.length ? cmpDag.map(d => Math.round(d.omzet * 100) / 100) : null;
+
+  const chartCtx = document.getElementById('omzetLineChart');
+  if (chartCtx) {
+    if (omzetChart) omzetChart.destroy();
+    const datasets = [{
+      label: 'Omzet',
+      data: omzetNu,
+      borderColor: 'hsl(25,95%,53%)',
+      backgroundColor: 'hsla(25,95%,53%,0.08)',
+      borderWidth: 2,
+      pointRadius: perDag.length > 60 ? 0 : 3,
+      pointHoverRadius: 5,
+      fill: true,
+      tension: 0.3
+    }];
+    if (omzetCmp && compareMode < 2) {
+      datasets.push({
+        label: cmpLabels[compareMode],
+        data: omzetCmp.slice(0, labels.length),
+        borderColor: 'hsl(210,70%,60%)',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderDash: [4,3],
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3
+      });
+    }
+    omzetChart = new Chart(chartCtx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: compareMode < 2 && cmpS },
+          tooltip: {
+            callbacks: {
+              label: ctx => ' ' + fmt(ctx.raw)
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 12, font: { size: 10 } } },
+          y: { grid: { color: 'hsla(0,0%,50%,0.1)' }, ticks: { callback: v => '€' + v.toLocaleString('nl-NL'), font: { size: 10 } } }
+        }
+      }
+    });
+  }
+
+  // ── Top producten tabel ───────────────────────────────────
   const prods = data.topProducten || [];
   if (!prods.length) {
-    document.getElementById('topProductenTable').innerHTML = '<p style="color:var(--muted-fg);font-size:0.85rem;">Geen producten gevonden. Voer eerst een sync uit.</p>';
+    document.getElementById('topProductenTable').innerHTML = '<p style="color:var(--muted-fg);font-size:0.85rem;">Geen producten. Voer eerst een sync uit.</p>';
   } else {
     const maxO = Math.max(...prods.map(p => p.omzet));
     document.getElementById('topProductenTable').innerHTML = `<div class="table-wrap"><table>
       <thead><tr><th>#</th><th>Product</th><th style="text-align:right">Stuks</th><th style="text-align:right">Omzet</th></tr></thead>
       <tbody>${prods.map((p,i) => `<tr>
         <td style="color:var(--muted-fg);font-size:0.7rem;">${i+1}</td>
-        <td>
-          <div style="font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.titel}">${p.titel}</div>
+        <td><div style="font-weight:500;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${p.titel}">${p.titel}</div>
           <div style="height:3px;background:var(--muted);border-radius:999px;margin-top:4px;"><div style="height:3px;border-radius:999px;background:var(--primary);width:${Math.round(p.omzet/maxO*100)}%"></div></div>
         </td>
         <td style="text-align:right">${p.stuks}</td>
         <td style="text-align:right;font-weight:600;color:var(--primary);">${fmt(p.omzet)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
+      </tr>`).join('')}</tbody></table></div>`;
   }
 
-  // Conversie tips
+  // ── Product omzet grafiek ─────────────────────────────────
+  const prodCtx = document.getElementById('productChart');
+  if (prodCtx && prods.length) {
+    if (productChart) productChart.destroy();
+    const top8 = prods.slice(0, 8);
+    productChart = new Chart(prodCtx, {
+      type: 'line',
+      data: {
+        labels: top8.map(p => p.titel.substring(0, 22) + (p.titel.length > 22 ? '…' : '')),
+        datasets: [{
+          label: 'Omzet excl. BTW',
+          data: top8.map(p => Math.round(p.omzet * 100) / 100),
+          borderColor: 'hsl(25,95%,53%)',
+          backgroundColor: 'hsla(25,95%,53%,0.1)',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          fill: true,
+          tension: 0.2
+        }, {
+          label: 'Stuks',
+          data: top8.map(p => p.stuks),
+          borderColor: 'hsl(210,70%,55%)',
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          pointRadius: 4,
+          borderDash: [4,3],
+          yAxisID: 'y2',
+          tension: 0.2
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'top', labels: { font: { size: 10 } } },
+          tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? ' ' + fmt(ctx.raw) : ' ' + ctx.raw + ' stuks' } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 9 } } },
+          y:  { position: 'left',  ticks: { callback: v => '€' + v, font: { size: 9 } }, grid: { color: 'hsla(0,0%,50%,0.1)' } },
+          y2: { position: 'right', ticks: { font: { size: 9 } }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // ── Conversie tips ────────────────────────────────────────
   const tips = [];
-  const gemW = s.gemOmzetPerBestelling || 0;
+  const gemW    = s.gemOmzetPerBestelling || 0;
   const inactPct = perDag.length > 0 ? Math.round((perDag.length - actieveDagen) / perDag.length * 100) : 0;
   if (prods.length > 0) {
     const top1pct = prods[0].omzet / (s.totalOmzet || 1) * 100;
     if (top1pct > 70) tips.push({ icon:'⚠️', titel:'Productrisico', tekst:`${Math.round(top1pct)}% omzet uit 1 product. Overweeg sortiment uitbreiden.` });
-    if (prods.length > 1) tips.push({ icon:'🔗', titel:'Cross-sell kans', tekst:`Bundel "${prods[0].titel.substring(0,25)}..." met andere producten.` });
+    tips.push({ icon:'🔗', titel:'Cross-sell kans', tekst:`Bundel "${prods[0].titel.substring(0,25)}..." met andere producten.` });
   }
-  if (gemW < 20 && gemW > 0) tips.push({ icon:'💶', titel:'Verhoog orderwaarde', tekst:`Gem. ${fmt(gemW)}. Bied gratis verzending boven €25 aan.` });
+  if (gemW < 25 && gemW > 0) tips.push({ icon:'💶', titel:'Verhoog orderwaarde', tekst:`Gem. ${fmt(gemW)}. Bied gratis verzending boven €30 aan.` });
   if (inactPct > 40) tips.push({ icon:'📅', titel:'Onregelmatige verkoop', tekst:`${inactPct}% van de dagen geen verkoop. Overweeg dagelijks adverteren.` });
   tips.push({ icon:'⭐', titel:'Reviews boosten', tekst:'Na levering automatisch reviewverzoek sturen via bol.com.' });
   tips.push({ icon:'🔍', titel:'SEO optimalisatie', tekst:'Gebruik de Tekst Scorer voor je top 3 producten.' });
@@ -673,18 +817,22 @@ function renderDashboard(data) {
       <div style="font-size:0.78rem;color:var(--muted-fg);line-height:1.45;">${t.tekst}</div></div>
     </div>`).join('');
 
-  // Omzet chart
-  if (perDag.length) {
-    const maxD = Math.max(...perDag.map(d => d.omzet), 1);
-    document.getElementById('omzetChart').innerHTML = `<div class="chart-bars">${
-      perDag.map(d => `<div class="bar-col" title="${d.datum}: ${fmt(d.omzet)}">
-        <div class="bar-fill" style="height:${Math.max(3, Math.round(d.omzet/maxD*110))}px"></div>
-        <div class="bar-label">${d.datum.substring(5)}</div>
-      </div>`).join('')
-    }</div>`;
-  }
+  // ── Actiepunten ───────────────────────────────────────────
+  const acties = [
+    { k:'var(--primary)', t:'Adverteer op bestseller', a:`Start gesponsord product voor "${(prods[0]?.titel||'je topseller').substring(0,30)}..." met €5-10/dag.`, i:'Hoog' },
+    { k:'var(--success)', t:'Teksten optimaliseren',   a:'Gebruik de Tekst Scorer voor je top 3. Alles onder 70 punten heeft verbeterpotentieel.', i:'Middel' },
+    { k:'var(--info)',    t:'Prijsstrategie testen',   a:`Gem. orderwaarde ${fmt(gemW)}. Test gratis verzending boven €${Math.round(gemW*1.3)}.`, i:'Middel' },
+  ];
+  document.getElementById('actiepunten').innerHTML = acties.map(a => `
+    <div style="padding:0.85rem 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.3rem;">
+        <div style="font-weight:600;font-size:0.82rem;border-left:3px solid ${a.k};padding-left:0.5rem;">${a.t}</div>
+        <span class="pill pill-${a.i==='Hoog'?'orange':'blue'}">${a.i}</span>
+      </div>
+      <div style="font-size:0.77rem;color:var(--muted-fg);line-height:1.45;padding-left:0.75rem;">${a.a}</div>
+    </div>`).join('');
 
-  // Multi-platform breakdown
+  // Platform breakdown
   const platforms = data.perPlatform || [];
   if (platforms.length > 1) {
     document.getElementById('platformCard').style.display = 'block';
@@ -696,24 +844,58 @@ function renderDashboard(data) {
       </div>`).join('')
     }</div>`;
   }
-
-  // Actiepunten
-  const acties = [
-    { kleur:'var(--primary)', titel:'Adverteer op bestseller', actie:`Start gesponsord product voor "${(prods[0]?.titel||'je topseller').substring(0,35)}..." met €5-10/dag.`, impact:'Hoog' },
-    { kleur:'var(--success)', titel:'Teksten optimaliseren', actie:'Gebruik de Tekst Scorer voor je top 3 producten. Alles onder 70 punten heeft verbeterpotentieel.', impact:'Middel' },
-    { kleur:'var(--info)',    titel:'Prijsstrategie testen', actie:`Gem. orderwaarde ${fmt(gemW)}. Test gratis verzending boven €${Math.round(gemW*1.3)}.`, impact:'Middel' },
-    { kleur:'hsl(280,70%,60%)', titel:'Bundel aanmaken', actie: prods.length > 1 ? `Bundel "${(prods[0]?.titel||'').substring(0,20)}..." + "${(prods[1]?.titel||'').substring(0,20)}..." voor hogere gem. orderwaarde.` : 'Voeg complementaire producten toe aan je assortiment.', impact:'Hoog' }
-  ];
-  document.getElementById('actiepuntenCard').style.display = 'block';
-  document.getElementById('actiepunten').innerHTML = acties.map(a => `
-    <div style="background:var(--card);border-radius:calc(var(--radius) - 2px);padding:1rem;border-left:3px solid ${a.kleur};">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;gap:0.5rem;">
-        <div style="font-weight:600;font-size:0.83rem;">${a.titel}</div>
-        <span class="pill pill-${a.impact==='Hoog'?'orange':'blue'}" style="white-space:nowrap;flex-shrink:0;">${a.impact}</span>
-      </div>
-      <div style="font-size:0.77rem;color:var(--muted-fg);line-height:1.45;">${a.actie}</div>
-    </div>`).join('');
 }
+
+// ── Zoekpositie tracker ───────────────────────────────────────
+const zoekpositieCache = {};
+
+async function checkZoekpositie() {
+  const term   = document.getElementById('zoekEan').value.trim();
+  const result = document.getElementById('zoekpositieResult');
+  if (!term) return;
+
+  result.innerHTML = '<span class="spinner"></span> Positie opzoeken...';
+
+  try {
+    const res  = await fetch(`${API}/api/zoekpositie?term=${encodeURIComponent(term)}`, { headers: getAuthHeaders() });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      result.innerHTML = `<div class="alert alert-danger" style="font-size:0.78rem;">${data.error || 'Niet gevonden'}</div>`;
+      return;
+    }
+
+    const pos   = data.positie;
+    const kleur = pos <= 3 ? 'var(--success)' : pos <= 10 ? 'var(--primary)' : pos <= 20 ? 'hsl(45,90%,50%)' : 'var(--danger)';
+    result.innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;padding:0.75rem;background:var(--muted);border-radius:var(--radius);">
+        <div style="font-size:2rem;font-weight:700;color:${kleur};font-family:var(--font-h);">#${pos}</div>
+        <div>
+          <div style="font-weight:600;font-size:0.82rem;">${data.titel || term}</div>
+          <div style="font-size:0.72rem;color:var(--muted-fg);">Positie ${pos} van ${data.totaal || '?'} resultaten · Pagina ${Math.ceil(pos/24)}</div>
+        </div>
+      </div>`;
+
+    // Sla op in history
+    if (!zoekpositieCache[term]) zoekpositieCache[term] = [];
+    zoekpositieCache[term].unshift({ datum: new Date().toLocaleDateString('nl-NL'), positie: pos });
+    if (zoekpositieCache[term].length > 5) zoekpositieCache[term].pop();
+    renderZoekHistory(term);
+
+  } catch (e) {
+    result.innerHTML = `<div class="alert alert-danger" style="font-size:0.78rem;">Fout: ${e.message}</div>`;
+  }
+}
+
+function renderZoekHistory(term) {
+  const hist = zoekpositieCache[term] || [];
+  if (hist.length < 2) return;
+  const el = document.getElementById('zoekpositieHistory');
+  el.innerHTML = `<div style="font-size:0.72rem;color:var(--muted-fg);margin-bottom:0.3rem;">Geschiedenis voor "${term}":</div>` +
+    hist.map(h => `<div style="display:flex;justify-content:space-between;font-size:0.75rem;padding:0.2rem 0;border-bottom:1px solid var(--border);">
+      <span>${h.datum}</span><strong>#${h.positie}</strong></div>`).join('');
+}
+
 
 // ═══════════════════════════════════════════════════════════
 // ANALYSE (CSV upload + live API fallback) — preserved from v1

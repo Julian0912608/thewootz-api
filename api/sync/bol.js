@@ -1,6 +1,6 @@
-// api/sync/bol.js — Definitieve versie
-// Open orders via /orders endpoint
-// Historische orders via /shipments endpoint (direct verwerken zonder extra detail call)
+// api/sync/bol.js — Timeout-proof versie
+// Open orders: via /orders + detail calls (klein aantal)
+// Historische orders: via /shipments ZONDER extra detail calls (direct opslaan)
 
 import { setCors, getSupabase, getUser } from '../_lib/supabase.js';
 
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   const currentPage = parseInt(page) || 1;
 
-  // ── MODE: orders ─────────────────────────────────────────
+  // ── MODE: orders — open bestellingen met detail calls ─────
   if (mode === 'orders') {
     const r = await fetch(`${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -44,16 +44,25 @@ export default async function handler(req, res) {
     }
     const data      = await r.json();
     const summaries = data.orders || [];
-    const ordersNew = await processOrderSummaries(summaries, storeId, user.id, headers, supabase);
-    const hasMore   = summaries.length >= 50;
+    let ordersNew   = 0;
 
+    // Detail calls in batches van 5
+    for (let i = 0; i < summaries.length; i += 5) {
+      const batch   = summaries.slice(i, i + 5);
+      const details = await Promise.all(batch.map(o => fetchOrderDetail(o.orderId, headers)));
+      for (const detail of details) {
+        if (detail && await upsertOrder(detail, storeId, user.id, supabase)) ordersNew++;
+      }
+    }
+
+    const hasMore = summaries.length >= 50;
     return res.status(200).json({
       ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Orders pagina ${currentPage}: ${ordersNew} verwerkt.`, mode: 'orders'
+      message: `Orders p${currentPage}: ${ordersNew} verwerkt.`, mode: 'orders'
     });
   }
 
-  // ── MODE: shipments ───────────────────────────────────────
+  // ── MODE: shipments — GEEN extra detail calls, direct opslaan ──
   if (mode === 'shipments') {
     const r = await fetch(`${BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -62,81 +71,73 @@ export default async function handler(req, res) {
     }
     const data      = await r.json();
     const shipments = data.shipments || [];
+    let ordersNew   = 0;
 
-    // Debug: stuur ook de ruwe data mee zodat we kunnen zien wat bol teruggeeft
-    const sample = shipments.slice(0, 2);
-
-    let ordersNew = 0;
-
-    // Groepeer per orderId
+    // Groepeer shipment items per orderId
     const orderMap = {};
     for (const s of shipments) {
-      const orderId = s.orderId || s.order?.orderId;
+      // Bol.com shipment structuur: { shipmentId, orderId, shipmentDate, shipmentItems: [...] }
+      const orderId = s.orderId;
       if (!orderId) continue;
+
       if (!orderMap[orderId]) {
         orderMap[orderId] = {
           orderId,
-          shipmentDate: s.shipmentDate || s.shipmentItems?.[0]?.shipmentDate,
+          orderDate: s.shipmentDate?.substring(0, 10) || new Date().toISOString().split('T')[0],
           items: []
         };
       }
-      const items = s.shipmentItems || s.items || [];
+
+      // shipmentItems bevatten: { orderItemId, ean, title, quantity, unitPrice, ... }
+      const items = s.shipmentItems || [];
       for (const item of items) {
-        orderMap[orderId].items.push(item);
+        orderMap[orderId].items.push({
+          product_title: item.product?.title || item.title || 'Onbekend product',
+          product_ean:   item.product?.ean   || item.ean  || null,
+          quantity:      item.quantity       || 1,
+          unit_price:    item.unitPrice      || 0,
+          total_price:   (item.unitPrice || 0) * (item.quantity || 1)
+        });
       }
     }
 
-    const orderIds = Object.keys(orderMap);
+    // Sla op in Supabase — geen extra API calls!
+    for (const [orderId, order] of Object.entries(orderMap)) {
+      const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
 
-    // Probeer order details op te halen, anders gebruik shipment data direct
-    const BATCH = 5;
-    for (let i = 0; i < orderIds.length; i += BATCH) {
-      const batch   = orderIds.slice(i, i + BATCH);
-      const details = await Promise.all(batch.map(oid => fetchOrderDetail(oid, headers)));
+      const { data: upserted } = await supabase.from('orders').upsert({
+        store_id:     storeId,
+        user_id:      user.id,
+        platform:     'bol',
+        external_id:  orderId,
+        order_date:   order.orderDate,
+        status:       'shipped',
+        total_amount: totalAmount,
+        raw_data:     { orderId, shipmentDate: order.orderDate }
+      }, { onConflict: 'store_id,external_id', ignoreDuplicates: true }) // ignoreDuplicates: al open orders niet overschrijven
+      .select('id').single();
 
-      for (let j = 0; j < batch.length; j++) {
-        const orderId  = batch[j];
-        const detail   = details[j];
-        const shipment = orderMap[orderId];
+      if (!upserted) continue;
 
-        if (detail) {
-          // Order detail gevonden — verwerk normaal
-          if (await upsertOrder(detail, storeId, user.id, supabase, 'shipped')) ordersNew++;
-        } else {
-          // Geen detail — gebruik shipment data direct
-          const shipmentDate = shipment.shipmentDate?.substring(0, 10) || new Date().toISOString().split('T')[0];
-          const items        = shipment.items || [];
-          const totalAmount  = items.reduce((sum, i) => sum + (i.unitPrice * (i.quantity || 1) || 0), 0);
-
-          const { data: upserted } = await supabase.from('orders').upsert({
-            store_id: storeId, user_id: user.id, platform: 'bol',
-            external_id: orderId, order_date: shipmentDate,
-            status: 'shipped', total_amount: totalAmount, raw_data: shipment
-          }, { onConflict: 'store_id,external_id', ignoreDuplicates: false }).select('id').single();
-
-          if (upserted && items.length > 0) {
-            const orderItems = items.map(item => ({
-              order_id: upserted.id, store_id: storeId, user_id: user.id, platform: 'bol',
-              product_title: item.product?.title || item.title || 'Onbekend',
-              product_ean:   item.product?.ean   || item.ean || null,
-              quantity:      item.quantity       || 1,
-              unit_price:    item.unitPrice      || 0,
-              total_price:   (item.unitPrice || 0) * (item.quantity || 1)
-            }));
-            await supabase.from('order_items').delete().eq('order_id', upserted.id);
-            await supabase.from('order_items').insert(orderItems);
-            ordersNew++;
-          }
-        }
+      if (order.items.length > 0) {
+        const dbItems = order.items.map(item => ({
+          ...item,
+          order_id:  upserted.id,
+          store_id:  storeId,
+          user_id:   user.id,
+          platform:  'bol'
+        }));
+        await supabase.from('order_items').delete().eq('order_id', upserted.id);
+        await supabase.from('order_items').insert(dbItems);
       }
+      ordersNew++;
     }
 
     const hasMore = shipments.length >= 50;
     return res.status(200).json({
       ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Shipments pagina ${currentPage}: ${ordersNew} verwerkt.`,
-      mode: 'shipments', totalShipments: shipments.length, orderIds: orderIds.length,
-      sample: sample // debug info
+      message: `Shipments p${currentPage}: ${ordersNew} orders verwerkt uit ${shipments.length} shipments.`,
+      mode: 'shipments'
     });
   }
 
@@ -150,25 +151,10 @@ export default async function handler(req, res) {
   return res.status(400).json({ error: 'Onbekende mode' });
 }
 
-async function processOrderSummaries(summaries, storeId, userId, headers, supabase) {
-  let count = 0;
-  const BATCH = 5;
-  for (let i = 0; i < summaries.length; i += BATCH) {
-    const details = await Promise.all(
-      summaries.slice(i, i + BATCH).map(o => fetchOrderDetail(o.orderId, headers))
-    );
-    for (const detail of details) {
-      if (!detail) continue;
-      if (await upsertOrder(detail, storeId, userId, supabase, 'open')) count++;
-    }
-  }
-  return count;
-}
-
-async function upsertOrder(detail, storeId, userId, supabase, defaultStatus) {
+async function upsertOrder(detail, storeId, userId, supabase) {
   const orderDate   = (detail.orderPlacedDateTime || '').substring(0, 10) || new Date().toISOString().split('T')[0];
   const totalAmount = (detail.orderItems || []).reduce((sum, i) => sum + (i.totalPrice || (i.unitPrice * (i.quantity || 1)) || 0), 0);
-  const status      = getOrderStatus(detail.orderItems || []) || defaultStatus;
+  const status      = getOrderStatus(detail.orderItems || []);
 
   const { data: upserted } = await supabase.from('orders').upsert({
     store_id: storeId, user_id: userId, platform: 'bol',

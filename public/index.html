@@ -956,6 +956,57 @@ textarea { resize: vertical; min-height: 100px; }
             <div class="card">
               <div class="card-title">➕ Winkel koppelen</div>
 
+              <!-- Platform selector -->
+              <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" id="platformBtn-bol"    onclick="selectPlatform('bol')">🏪 Bol.com</button>
+                <button class="btn btn-ghost btn-sm"  id="platformBtn-etsy"   onclick="selectPlatform('etsy')">🎨 Etsy</button>
+                <button class="btn btn-ghost btn-sm"  id="platformBtn-amazon" onclick="selectPlatform('amazon')">📦 Amazon</button>
+              </div>
+
+              <!-- Bol.com form -->
+              <div id="bolConnectForm">
+                <div class="form-row">
+                  <label>Winkelnaam</label>
+                  <input type="text" id="storeName" placeholder="Bijv: TheWootz NL">
+                </div>
+                <div class="form-row">
+                  <label>Client ID</label>
+                  <input type="text" id="storeClientId" placeholder="Jouw bol.com Client ID" autocomplete="off">
+                </div>
+                <div class="form-row">
+                  <label>Client Secret</label>
+                  <input type="password" id="storeClientSecret" placeholder="Jouw bol.com Client Secret" autocomplete="off">
+                </div>
+                <div class="alert alert-info" style="font-size:0.75rem;">
+                  📍 Vind je credentials via: <strong>Bol.com Partnerplatform → API → Mijn applicaties</strong>
+                </div>
+                <div id="addStoreError" class="alert alert-danger" style="display:none;"></div>
+                <button class="btn btn-primary" style="width:100%;" id="addStoreBtn" onclick="addStore()">
+                  🔗 Winkel koppelen &amp; valideren
+                </button>
+              </div>
+
+              <!-- OAuth form (Etsy / Amazon) -->
+              <div id="oauthConnectForm" style="display:none;">
+                <div id="oauthPlatformInfo"></div>
+              </div>
+            </div>
+
+            <!-- Platform roadmap -->
+            <div class="card" style="border:1.5px dashed var(--border);background:var(--muted);box-shadow:none;margin-top:0;">
+              <div class="card-title" style="font-size:0.8rem;">🗺️ Platform roadmap</div>
+              <div style="display:grid;gap:0.6rem;">
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.78rem;"><span>🏪</span><div><strong>Bol.com</strong> <span class="pill pill-green" style="font-size:0.6rem;">Live</span></div></div>
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.78rem;"><span>🎨</span><div><strong>Etsy</strong> <span class="pill pill-orange" style="font-size:0.6rem;">Beta</span><div style="font-size:0.7rem;color:var(--muted-fg);">Vereist ETSY_CLIENT_ID in Vercel</div></div></div>
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.78rem;"><span>📦</span><div><strong>Amazon</strong> <span class="pill pill-blue" style="font-size:0.6rem;">Coming soon</span><div style="font-size:0.7rem;color:var(--muted-fg);">Vereist SP-API goedkeuring</div></div></div>
+                <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.78rem;"><span>📌</span><div><strong>Pinterest Ads</strong> <span class="pill pill-purple" style="font-size:0.6rem;">Q2 2026</span></div></div>
+              </div>
+            </div>
+          </div><!-- Add store -->
+          <div>
+            <div class="card">
+              <div class="card-title">➕ Winkel koppelen</div>
+
               <!-- Platform tabs -->
               <div style="display:flex;gap:0.5rem;margin-bottom:1.25rem;flex-wrap:wrap;">
                 <button class="btn btn-primary btn-sm" id="platformBtn-bol" onclick="selectPlatform('bol')">🏪 Bol.com</button>

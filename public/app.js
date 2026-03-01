@@ -155,6 +155,39 @@ window.addEventListener('load', async () => {
     }
   });
 
+  // ── Supabase email bevestiging redirect afhandelen ──────
+  // Na email klik stuurt Supabase je terug met #access_token=... in de URL
+  const hash = window.location.hash;
+  if (hash && hash.includes('access_token=')) {
+    const params = new URLSearchParams(hash.replace('#', ''));
+    const accessToken  = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const expiresIn    = parseInt(params.get('expires_in') || '3600');
+
+    if (accessToken) {
+      // Haal gebruikersinfo op via de token
+      try {
+        const res = await fetch(`${API}/api/auth`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-User-Token': accessToken },
+          body: JSON.stringify({ action: 'me' })
+        });
+        // Bouw sessie op met de token uit de URL
+        const session = {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_at: Math.floor(Date.now() / 1000) + expiresIn
+        };
+        const user = { email: params.get('email') || '' };
+        saveSession(session, user);
+        // Verwijder de token uit de URL (netjes)
+        window.history.replaceState({}, document.title, '/');
+        enterApp();
+        return;
+      } catch {}
+    }
+  }
+
   if (loadSavedSession() && isSessionValid()) {
     enterApp();
   } else if (loadSavedSession() && currentSession?.refresh_token) {
@@ -176,10 +209,11 @@ async function enterApp() {
   document.getElementById('appScreen').style.display  = '';
 
   // Update user info in sidebar
-  const name = currentUser?.fullName || currentUser?.email?.split('@')[0] || 'Gebruiker';
+  const email = currentUser?.email || '';
+  const name  = currentUser?.fullName || email.split('@')[0] || 'Gebruiker';
   document.getElementById('userName').textContent   = name;
   document.getElementById('userPlan').textContent   = 'Free plan';
-  document.getElementById('userAvatar').textContent = name.charAt(0).toUpperCase();
+  document.getElementById('userAvatar').textContent = name.charAt(0).toUpperCase() || 'G';
 
   // Navigatie events
   document.querySelectorAll('#sideNav .nav-item').forEach(item => {

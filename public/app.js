@@ -135,7 +135,7 @@ async function handleRegister() {
 function handleLogout() {
   clearSession();
   currentStores = [];
-  document.getElementById('authScreen').style.display = '';
+  document.getElementById('authScreen').style.display = 'block';
   document.getElementById('appScreen').style.display  = 'none';
   document.getElementById('loginEmail').value    = '';
   document.getElementById('loginPassword').value = '';
@@ -200,13 +200,13 @@ window.addEventListener('load', async () => {
 });
 
 function showAuthScreen() {
-  document.getElementById('authScreen').style.display = '';
+  document.getElementById('authScreen').style.display = 'block';
   document.getElementById('appScreen').style.display  = 'none';
 }
 
 async function enterApp() {
   document.getElementById('authScreen').style.display = 'none';
-  document.getElementById('appScreen').style.display  = '';
+  document.getElementById('appScreen').style.display  = 'block';
 
   // Update user info in sidebar
   const email = currentUser?.email || '';

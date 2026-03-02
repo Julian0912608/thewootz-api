@@ -173,7 +173,8 @@ export default async function handler(req, res) {
     stores,
     vergelijking,
     opgehaaldUitDatabase: true,
-    opgehaaldOp: new Date().toISOString()
+    opgehaaldOp: new Date().toISOString(),
+    _debug: { start, end, storeIds, totalOrdersFound: (orders || []).length }
   });
 }
 

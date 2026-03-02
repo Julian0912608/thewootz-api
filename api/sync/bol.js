@@ -62,7 +62,9 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── MODE: shipments — GEEN extra detail calls, direct opslaan ──
+  // ── MODE: shipments — historische orders via shipments endpoint ──
+  // Bol.com /orders geeft alleen laatste 48u. Shipments gaan jaren terug.
+  // We gebruiken hier orderPlacedDateTime (zit in shipment object) voor de juiste order_date.
   if (mode === 'shipments') {
     const r = await fetch(`${BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -74,21 +76,23 @@ export default async function handler(req, res) {
     let ordersNew   = 0;
 
     // Groepeer shipment items per orderId
+    // Bol.com shipment structuur: { shipmentId, orderId, shipmentDate, order: { orderPlacedDateTime }, shipmentItems: [...] }
     const orderMap = {};
     for (const s of shipments) {
-      // Bol.com shipment structuur: { shipmentId, orderId, shipmentDate, shipmentItems: [...] }
       const orderId = s.orderId;
       if (!orderId) continue;
 
       if (!orderMap[orderId]) {
-        orderMap[orderId] = {
-          orderId,
-          orderDate: s.shipmentDate?.substring(0, 10) || new Date().toISOString().split('T')[0],
-          items: []
-        };
+        // Prioriteit voor orderPlacedDateTime (echte besteldatum), anders shipmentDate
+        const orderDate =
+          s.order?.orderPlacedDateTime?.substring(0, 10) ||
+          s.orderPlacedDateTime?.substring(0, 10) ||
+          s.shipmentDate?.substring(0, 10) ||
+          new Date().toISOString().split('T')[0];
+
+        orderMap[orderId] = { orderId, orderDate, items: [] };
       }
 
-      // shipmentItems bevatten: { orderItemId, ean, title, quantity, unitPrice, ... }
       const items = s.shipmentItems || [];
       for (const item of items) {
         orderMap[orderId].items.push({
@@ -101,42 +105,69 @@ export default async function handler(req, res) {
       }
     }
 
-    // Sla op in Supabase — geen extra API calls!
+    // Sla op in Supabase
+    // BELANGRIJK: ignoreDuplicates: false + alleen order_date updaten als die nog 'vandaag' is
+    // (betekent dat de orders-mode hem net heeft opgeslagen zonder echte datum)
     for (const [orderId, order] of Object.entries(orderMap)) {
       const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
+      const today = new Date().toISOString().split('T')[0];
 
-      const { data: upserted } = await supabase.from('orders').upsert({
-        store_id:     storeId,
-        user_id:      user.id,
-        platform:     'bol',
-        external_id:  orderId,
-        order_date:   order.orderDate,
-        status:       'shipped',
-        total_amount: totalAmount,
-        raw_data:     { orderId, shipmentDate: order.orderDate }
-      }, { onConflict: 'store_id,external_id', ignoreDuplicates: true }) // ignoreDuplicates: al open orders niet overschrijven
-      .select('id').single();
+      // Kijk of order al bestaat
+      const { data: existing } = await supabase
+        .from('orders')
+        .select('id, order_date')
+        .eq('store_id', storeId)
+        .eq('external_id', orderId)
+        .single();
 
-      if (!upserted) continue;
+      let dbOrderId;
 
+      if (existing) {
+        // Order bestaat al — update order_date als die vandaag is (= placeholder uit orders-mode)
+        // of als we een betere datum hebben
+        const shouldUpdateDate = existing.order_date >= today || existing.order_date === today;
+        if (shouldUpdateDate && order.orderDate < today) {
+          await supabase.from('orders')
+            .update({ order_date: order.orderDate, status: 'shipped', total_amount: totalAmount })
+            .eq('id', existing.id);
+        }
+        dbOrderId = existing.id;
+      } else {
+        // Nieuwe order aanmaken
+        const { data: inserted } = await supabase.from('orders').insert({
+          store_id:     storeId,
+          user_id:      user.id,
+          platform:     'bol',
+          external_id:  orderId,
+          order_date:   order.orderDate,
+          status:       'shipped',
+          total_amount: totalAmount,
+          raw_data:     { orderId, orderDate: order.orderDate }
+        }).select('id').single();
+
+        if (!inserted) continue;
+        dbOrderId = inserted.id;
+        ordersNew++;
+      }
+
+      // Order items opslaan/verversen
       if (order.items.length > 0) {
         const dbItems = order.items.map(item => ({
           ...item,
-          order_id:  upserted.id,
+          order_id:  dbOrderId,
           store_id:  storeId,
           user_id:   user.id,
           platform:  'bol'
         }));
-        await supabase.from('order_items').delete().eq('order_id', upserted.id);
+        await supabase.from('order_items').delete().eq('order_id', dbOrderId);
         await supabase.from('order_items').insert(dbItems);
       }
-      ordersNew++;
     }
 
     const hasMore = shipments.length >= 50;
     return res.status(200).json({
       ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Shipments p${currentPage}: ${ordersNew} orders verwerkt uit ${shipments.length} shipments.`,
+      message: `Shipments p${currentPage}: ${ordersNew} nieuwe + bestaande bijgewerkt uit ${shipments.length} shipments.`,
       mode: 'shipments'
     });
   }

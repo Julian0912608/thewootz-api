@@ -1,7 +1,7 @@
-// api/sync/bol.js — Bol.com sync
-// Mode 'orders': open bestellingen via /orders endpoint (laatste 48u van bol API)
-// Mode 'shipments': historische bestellingen via /shipments endpoint (geen tijdslimiet)
-// Mode 'finalize': update last_synced_at in stores tabel
+// api/sync/bol.js
+// mode=orders   → open bestellingen (bol.com max ~48u)
+// mode=shipments → historische verzendingen (geen tijdslimiet, gaat jaren terug)
+// mode=finalize  → sla last_synced_at op
 
 import { setCors, getSupabase, getUser } from '../_lib/supabase.js';
 
@@ -19,7 +19,6 @@ export default async function handler(req, res) {
   if (!storeId) return res.status(400).json({ error: 'storeId verplicht' });
 
   const supabase = getSupabase();
-
   const { data: store } = await supabase
     .from('stores').select('*').eq('id', storeId).eq('user_id', user.id).single();
 
@@ -37,11 +36,12 @@ export default async function handler(req, res) {
 
   const currentPage = parseInt(page) || 1;
 
-  // ── MODE: orders ───────────────────────────────────────────
-  // Haalt open/recente bestellingen op (max ~48u terug door bol API limiet)
-  // Gebruikt detail calls om orderPlacedDateTime te krijgen (echte besteldatum)
+  // ─── MODE: orders ─────────────────────────────────────────────────
   if (mode === 'orders') {
-    const r = await fetch(`${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${currentPage}`, { headers });
+    const r = await fetch(
+      `${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${currentPage}`,
+      { headers }
+    );
     if (!r.ok) {
       const err = await r.text();
       return res.status(r.status).json({ error: `Orders API fout (${r.status})`, detail: err.substring(0, 300) });
@@ -49,26 +49,32 @@ export default async function handler(req, res) {
     const data      = await r.json();
     const summaries = data.orders || [];
     let ordersNew   = 0;
+    const errors    = [];
 
-    // Detail calls in batches van 5
     for (let i = 0; i < summaries.length; i += 5) {
       const batch   = summaries.slice(i, i + 5);
       const details = await Promise.all(batch.map(o => fetchOrderDetail(o.orderId, headers)));
       for (const detail of details) {
-        if (detail && await upsertOrder(detail, storeId, user.id, supabase)) ordersNew++;
+        if (!detail) continue;
+        try {
+          const ok = await upsertOrder(detail, storeId, user.id, supabase);
+          if (ok) ordersNew++;
+        } catch(e) { errors.push(e.message); }
       }
     }
 
     const hasMore = summaries.length >= 50;
     return res.status(200).json({
-      ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Orders p${currentPage}: ${ordersNew} verwerkt.`, mode: 'orders'
+      ordersNew, hasMore,
+      nextPage: hasMore ? currentPage + 1 : null,
+      message: `Orders p${currentPage}: ${summaries.length} gevonden, ${ordersNew} opgeslagen`,
+      mode: 'orders', errors
     });
   }
 
-  // ── MODE: shipments ────────────────────────────────────────
-  // Haalt verzonden bestellingen op — gaat jaren terug, geen tijdslimiet
-  // Dit is de manier om historische data te importeren
+  // ─── MODE: shipments ──────────────────────────────────────────────
+  // Bol.com shipments endpoint heeft GEEN tijdslimiet — gaat jaren terug
+  // Elke pagina = 50 shipments. Frontend loopt door alle pagina's heen.
   if (mode === 'shipments') {
     const r = await fetch(`${BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -78,16 +84,16 @@ export default async function handler(req, res) {
     const data      = await r.json();
     const shipments = data.shipments || [];
     let ordersNew   = 0;
+    const errors    = [];
 
-    // Groepeer items per orderId
+    // Groepeer shipment items per orderId
     const orderMap = {};
     for (const s of shipments) {
       const orderId = s.orderId;
       if (!orderId) continue;
 
       if (!orderMap[orderId]) {
-        // Gebruik orderPlacedDateTime als die beschikbaar is (echte besteldatum!)
-        // Anders shipmentDate als fallback
+        // Echte besteldatum: probeer meerdere veldnamen
         const orderDate =
           s.order?.orderPlacedDateTime?.substring(0, 10) ||
           s.orderPlacedDateTime?.substring(0, 10) ||
@@ -101,81 +107,108 @@ export default async function handler(req, res) {
         orderMap[orderId].items.push({
           product_title: item.product?.title || item.title || 'Onbekend product',
           product_ean:   item.product?.ean   || item.ean  || null,
-          quantity:      item.quantity       || 1,
-          unit_price:    item.unitPrice      || 0,
+          quantity:      item.quantity || 1,
+          unit_price:    item.unitPrice || 0,
           total_price:   (item.unitPrice || 0) * (item.quantity || 1)
         });
       }
     }
 
-    for (const [orderId, order] of Object.entries(orderMap)) {
-      const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
+    for (const order of Object.values(orderMap)) {
+      try {
+        const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
 
-      // upsert: als order al bestaat (vanuit orders-mode) → update de order_date
-      // met de echte historische datum (orders-mode heeft soms vandaag als placeholder)
-      const { data: upserted } = await supabase.from('orders').upsert({
-        store_id:     storeId,
-        user_id:      user.id,
-        platform:     'bol',
-        external_id:  orderId,
-        order_date:   order.orderDate,
-        status:       'shipped',
-        total_amount: totalAmount,
-        raw_data:     { orderId, orderDate: order.orderDate }
-      }, {
-        onConflict: 'store_id,external_id',
-        ignoreDuplicates: false   // ALTIJD updaten zodat order_date gecorrigeerd wordt
-      }).select('id').single();
+        const { data: upserted, error: upsertErr } = await supabase
+          .from('orders')
+          .upsert({
+            store_id:     storeId,
+            user_id:      user.id,
+            platform:     'bol',
+            external_id:  order.orderId,
+            order_date:   order.orderDate,
+            status:       'shipped',
+            total_amount: totalAmount,
+            raw_data:     { orderId: order.orderId, orderDate: order.orderDate }
+          }, {
+            onConflict:      'store_id,external_id',
+            ignoreDuplicates: false   // Altijd updaten — corrigeert placeholder datums
+          })
+          .select('id')
+          .single();
 
-      if (!upserted) continue;
+        if (upsertErr) { errors.push(`${order.orderId}: ${upsertErr.message}`); continue; }
+        if (!upserted) { errors.push(`${order.orderId}: geen id terug`); continue; }
 
-      if (order.items.length > 0) {
-        const dbItems = order.items.map(item => ({
-          ...item,
-          order_id:  upserted.id,
-          store_id:  storeId,
-          user_id:   user.id,
-          platform:  'bol'
-        }));
-        await supabase.from('order_items').delete().eq('order_id', upserted.id);
-        await supabase.from('order_items').insert(dbItems);
-      }
-      ordersNew++;
+        if (order.items.length > 0) {
+          const dbItems = order.items.map(item => ({
+            ...item,
+            order_id: upserted.id,
+            store_id: storeId,
+            user_id:  user.id,
+            platform: 'bol'
+          }));
+          await supabase.from('order_items').delete().eq('order_id', upserted.id);
+          await supabase.from('order_items').insert(dbItems);
+        }
+        ordersNew++;
+      } catch(e) { errors.push(`${order.orderId}: ${e.message}`); }
     }
 
+    // Bol.com geeft lege array terug als er geen shipments meer zijn
     const hasMore = shipments.length >= 50;
+
     return res.status(200).json({
-      ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Shipments p${currentPage}: ${ordersNew} orders verwerkt uit ${shipments.length} shipments.`,
-      mode: 'shipments'
+      ordersNew, hasMore,
+      nextPage: hasMore ? currentPage + 1 : null,
+      shipmentsOnPage: shipments.length,
+      message: `Shipments p${currentPage}: ${shipments.length} shipments, ${ordersNew} orders opgeslagen`,
+      mode: 'shipments', errors: errors.slice(0, 5)
     });
   }
 
-  // ── MODE: finalize ─────────────────────────────────────────
+  // ─── MODE: finalize ───────────────────────────────────────────────
   if (mode === 'finalize') {
-    await supabase.from('stores').update({ last_synced_at: new Date().toISOString() }).eq('id', storeId);
-    await supabase.from('sync_log').insert({ store_id: storeId, user_id: user.id, status: 'ok' });
-    return res.status(200).json({ message: 'Sync afgerond.' });
+    await supabase.from('stores')
+      .update({ last_synced_at: new Date().toISOString() })
+      .eq('id', storeId);
+    await supabase.from('sync_log').insert({
+      store_id: storeId, user_id: user.id, status: 'ok'
+    });
+    return res.status(200).json({ message: 'Sync afgerond, last_synced_at bijgewerkt.' });
   }
 
-  return res.status(400).json({ error: 'Onbekende mode' });
+  return res.status(400).json({ error: `Onbekende mode: ${mode}` });
 }
 
+// ─── Hulpfuncties ─────────────────────────────────────────────────────────────
+
 async function upsertOrder(detail, storeId, userId, supabase) {
-  const orderDate   = (detail.orderPlacedDateTime || '').substring(0, 10) || new Date().toISOString().split('T')[0];
-  const totalAmount = (detail.orderItems || []).reduce((sum, i) => sum + (i.totalPrice || (i.unitPrice * (i.quantity || 1)) || 0), 0);
-  const status      = getOrderStatus(detail.orderItems || []);
+  const orderDate = (detail.orderPlacedDateTime || '').substring(0, 10)
+    || new Date().toISOString().split('T')[0];
 
-  const { data: upserted } = await supabase.from('orders').upsert({
-    store_id: storeId, user_id: userId, platform: 'bol',
-    external_id: detail.orderId, order_date: orderDate,
-    status, total_amount: totalAmount, raw_data: detail
-  }, { onConflict: 'store_id,external_id', ignoreDuplicates: false }).select('id').single();
+  const totalAmount = (detail.orderItems || []).reduce(
+    (sum, i) => sum + (i.totalPrice || (i.unitPrice * (i.quantity || 1)) || 0), 0
+  );
 
-  if (!upserted) return false;
+  const { data: upserted, error } = await supabase.from('orders').upsert({
+    store_id:     storeId,
+    user_id:      userId,
+    platform:     'bol',
+    external_id:  detail.orderId,
+    order_date:   orderDate,
+    status:       getOrderStatus(detail.orderItems || []),
+    total_amount: totalAmount,
+    raw_data:     detail
+  }, { onConflict: 'store_id,external_id', ignoreDuplicates: false })
+    .select('id').single();
+
+  if (error || !upserted) return false;
 
   const items = (detail.orderItems || []).map(item => ({
-    order_id: upserted.id, store_id: storeId, user_id: userId, platform: 'bol',
+    order_id:      upserted.id,
+    store_id:      storeId,
+    user_id:       userId,
+    platform:      'bol',
     product_title: item.product?.title || item.offer?.reference || 'Onbekend',
     product_ean:   item.product?.ean   || null,
     quantity:      item.quantity       || 1,
@@ -188,22 +221,26 @@ async function upsertOrder(detail, storeId, userId, supabase) {
   return true;
 }
 
+async function fetchOrderDetail(orderId, headers) {
+  try {
+    const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
 async function getBolToken(clientId, clientSecret) {
   try {
     const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
     const r = await fetch('https://login.bol.com/token?grant_type=client_credentials', {
       method: 'POST',
-      headers: { 'Authorization': `Basic ${creds}`, 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }
+      headers: {
+        'Authorization':  `Basic ${creds}`,
+        'Accept':         'application/json',
+        'Content-Type':   'application/x-www-form-urlencoded'
+      }
     });
     if (!r.ok) return null;
     return (await r.json()).access_token;
-  } catch { return null; }
-}
-
-async function fetchOrderDetail(orderId, headers) {
-  try {
-    const r = await fetch(`${BASE}/orders/${orderId}`, { headers });
-    return r.ok ? await r.json() : null;
   } catch { return null; }
 }
 

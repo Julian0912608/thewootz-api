@@ -801,10 +801,18 @@ textarea { resize: vertical; min-height: 100px; }
         <span class="live-dot"></span> LIVE
       </div>
       <div class="period-group">
-        <span>Periode:</span>
-        <input type="date" id="startDate">
-        <span>tot</span>
-        <input type="date" id="endDate">
+        <select id="periodPreset" onchange="applyPeriodPreset(this.value)" style="font-size:0.8rem;padding:0.3rem 0.5rem;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer;">
+          <option value="90">Laatste 90 dagen</option>
+          <option value="30">Laatste 30 dagen</option>
+          <option value="7">Laatste 7 dagen</option>
+          <option value="thisyear">Dit jaar</option>
+          <option value="lastyear">Vorig jaar</option>
+          <option value="all">Alles (max 2 jaar)</option>
+          <option value="custom">Aangepast...</option>
+        </select>
+        <input type="date" id="startDate" style="display:none;" onchange="loadDashboard()">
+        <span id="periodSep" style="display:none;">tot</span>
+        <input type="date" id="endDate" style="display:none;" onchange="loadDashboard()">
       </div>
       <div class="topbar-actions">
         <button class="btn btn-ghost btn-sm" id="syncBtn" style="display:none;" onclick="triggerSync(false)" title="Sync recente bestellingen">

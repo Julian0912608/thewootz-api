@@ -65,11 +65,11 @@ async function runTest() {
   const h = getHeaders(); if (!h) return;
   log('Test: shipments API pagina 1...', 'info');
   try {
-    const r = await fetch(`${API}/api?route=test-shipments?page=1`, { headers: h });
+    const r = await fetch(`${API}/api?route=test-shipments&page=1`, { headers: h });
     if (!r.ok) {
       const t = await r.text();
       log(`❌ HTTP ${r.status}: ${t.substring(0, 200)}`, 'err');
-      if (r.status === 404) log('⚠️ test-shipments.js staat nog niet op GitHub!', 'warn');
+      log(`⚠️ Route niet gevonden: ${r.status}`, 'warn');
       return;
     }
     const d = await r.json();

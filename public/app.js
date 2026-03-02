@@ -11,10 +11,13 @@ let selectedPlatform = 'bol';
 let dashboardLoading = false;
 
 // ─── DATE INIT ────────────────────────────────────────────
+// Initialiseer datum via preset (wordt ook uitgevoerd bij laden)
+// applyPeriodPreset is lager gedefinieerd maar hoisted door functie-definitie
 const _today = new Date();
 const _90ago = new Date(_today - 90 * 86400000);
 document.getElementById('endDate').value   = _today.toISOString().split('T')[0];
 document.getElementById('startDate').value = _90ago.toISOString().split('T')[0];
+// Preset staat al op 90 dagen als default
 
 // Periode preset helper
 function applyPeriodPreset(val) {
@@ -707,6 +710,12 @@ async function loadDashboard() {
   refreshBtn.style.display = 'inline-flex';
   document.getElementById('livePill').style.display = 'inline-flex';
 
+  // Zorg dat datum altijd gezet is via de preset (zelfs als inputs verborgen zijn)
+  const presetEl = document.getElementById('periodPreset');
+  if (presetEl && (!document.getElementById('startDate').value || !document.getElementById('endDate').value)) {
+    const pv = presetEl.value || '90';
+    if (pv !== 'custom') applyPeriodPreset(pv);
+  }
   const start = document.getElementById('startDate').value;
   const end   = document.getElementById('endDate').value;
   let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;

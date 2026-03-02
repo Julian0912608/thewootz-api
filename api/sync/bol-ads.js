@@ -72,9 +72,20 @@ export default async function handler(req, res) {
       fetch(`${BASE}/advertiser/categories?${params}&page=1&page-size=10`,   { headers }),
     ]);
 
-    // Totalen (verplicht)
+    // Totalen (verplicht) — returneer volledige foutboodschap voor diagnose
     if (!totR.ok) {
-      return res.status(totR.status).json({ error: `Reporting API fout (${totR.status})` });
+      let errBody = '';
+      try { errBody = await totR.text(); } catch {}
+      return res.status(totR.status).json({
+        error: `Reporting API fout (${totR.status})`,
+        detail: errBody.substring(0, 500),
+        requestedUrl: `${BASE}/advertiser?${params}`,
+        tip: totR.status === 400
+          ? 'Mogelijke oorzaak: datumformaat verkeerd, te groot bereik, of periode te ver in het verleden'
+          : totR.status === 403
+          ? 'Credentials hebben geen adverteer-scope'
+          : undefined
+      });
     }
     const totals = await totR.json();
 

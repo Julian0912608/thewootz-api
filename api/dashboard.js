@@ -60,15 +60,23 @@ export default async function handler(req, res) {
     .order('order_date', { ascending: false });
 
   // ── ORDER ITEMS ───────────────────────────────────────────
-  const { data: items } = await supabase
-    .from('order_items')
-    .select('product_title, product_ean, quantity, total_price, platform, store_id, order_id')
-    .in('store_id', storeIds)
-    .eq('user_id', user.id);
-
-  // Filter items op order_id om alleen items in de periode mee te nemen
-  const orderIds = new Set((orders || []).map(o => o.id));
-  const filteredItems = (items || []).filter(i => orderIds.has(i.order_id));
+  // Efficiënt: alleen items voor orders in de geselecteerde periode ophalen
+  // NIET alle order_items voor alle stores (dat schaalt niet voor SaaS)
+  const orderIds = (orders || []).map(o => o.id);
+  let filteredItems = [];
+  if (orderIds.length > 0) {
+    // Supabase .in() heeft een limiet van 1000 — splits bij grote datasets
+    const chunks = [];
+    for (let i = 0; i < orderIds.length; i += 500) chunks.push(orderIds.slice(i, i + 500));
+    for (const chunk of chunks) {
+      const { data: chunkItems } = await supabase
+        .from('order_items')
+        .select('product_title, product_ean, quantity, total_price, platform, store_id, order_id')
+        .in('order_id', chunk)
+        .eq('user_id', user.id);
+      if (chunkItems) filteredItems = filteredItems.concat(chunkItems);
+    }
+  }
 
   // ── STATISTIEKEN ──────────────────────────────────────────
   const BTW = 1.21;
@@ -118,12 +126,15 @@ export default async function handler(req, res) {
       .in('store_id', storeIds).eq('user_id', user.id)
       .gte('order_date', cmpStartStr).lte('order_date', cmpEndStr);
 
-    const { data: cmpItems } = await supabase
-      .from('order_items').select('product_title, product_ean, quantity, total_price, order_id')
-      .in('store_id', storeIds).eq('user_id', user.id);
-
-    const cmpOrderIds = new Set((cmpOrders || []).map(o => o.id));
-    const cmpFilteredItems = (cmpItems || []).filter(i => cmpOrderIds.has(i.order_id));
+    // Efficiënt: alleen items voor vergelijkperiode orders
+    const cmpOrderIds = (cmpOrders || []).map(o => o.id);
+    let cmpFilteredItems = [];
+    if (cmpOrderIds.length > 0) {
+      const { data: cmpItems } = await supabase
+        .from('order_items').select('product_title, product_ean, quantity, total_price, order_id')
+        .in('order_id', cmpOrderIds).eq('user_id', user.id);
+      cmpFilteredItems = cmpItems || [];
+    }
 
     const cmpTotal = (cmpOrders || []).reduce((sum, o) => sum + exBtw(o.total_amount || 0), 0);
     const cmpCount = (cmpOrders || []).length;

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Sync Debug — TheWootz</title>
+<style>
+  body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 2rem; }
+  h1 { color: #7c6af7; }
+  button { background: #7c6af7; color: white; border: none; padding: 0.6rem 1.4rem; border-radius: 6px; cursor: pointer; font-size: 1rem; margin: 0.3rem; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1rem; margin-top: 1rem; min-height: 200px; max-height: 600px; overflow-y: auto; }
+  .ok   { color: #4ade80; }
+  .err  { color: #f87171; }
+  .info { color: #60a5fa; }
+  .warn { color: #fbbf24; }
+  input { background: #1a1a1a; border: 1px solid #444; color: #e0e0e0; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.9rem; width: 400px; }
+</style>
+</head>
+<body>
+<h1>🔧 TheWootz Sync Debug</h1>
+<p>Token (plak je access_token hier):</p>
+<input type="text" id="tokenInput" placeholder="eyJ...">
+<br><br>
+<button onclick="runTest()">1. Test shipments API</button>
+<button onclick="runFullSync()">2. Volledige sync draaien</button>
+<button onclick="checkSupabase()">3. Check Supabase inhoud</button>
+<button onclick="clearLog()">Clear</button>
+<div id="log"></div>
+
+<script>
+const API = 'https://thewootz-api.vercel.app';
+let storeId = null;
+
+function log(msg, type = 'info') {
+  const div = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('nl-NL');
+  div.innerHTML += `<div class="${type}">[${time}] ${msg}</div>`;
+  div.scrollTop = div.scrollHeight;
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+function getHeaders() {
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) { log('⚠️ Plak eerst je access_token!', 'warn'); return null; }
+  return { 'Content-Type': 'application/json', 'X-User-Token': token };
+}
+
+async function checkSupabase() {
+  const h = getHeaders(); if (!h) return;
+  log('Supabase check starten...', 'info');
+  try {
+    const r = await fetch(`${API}/api/debug`, { headers: h });
+    const d = await r.json();
+    if (!r.ok) { log(`❌ Fout: ${d.error}`, 'err'); return; }
+    log(`✅ Winkels: ${d.stores?.map(s=>s.name).join(', ')}`, 'ok');
+    log(`📦 Totaal orders in DB: ${d.totalOrders}`, d.totalOrders > 10 ? 'ok' : 'warn');
+    log(`📅 Vroegste order: ${d.vroegste} | Laatste: ${d.laatste}`, 'info');
+    log(`📊 Per datum: ${JSON.stringify(d.perDatum)}`, 'info');
+    storeId = d.stores?.[0]?.id;
+    log(`🏪 Store ID: ${storeId}`, 'info');
+  } catch(e) { log(`❌ ${e.message}`, 'err'); }
+}
+
+async function runTest() {
+  const h = getHeaders(); if (!h) return;
+  log('Test: shipments API pagina 1...', 'info');
+  try {
+    const r = await fetch(`${API}/api/test-shipments?page=1`, { headers: h });
+    if (!r.ok) {
+      const t = await r.text();
+      log(`❌ HTTP ${r.status}: ${t.substring(0, 200)}`, 'err');
+      if (r.status === 404) log('⚠️ test-shipments.js staat nog niet op GitHub!', 'warn');
+      return;
+    }
+    const d = await r.json();
+    log(`✅ Shipments op p1: ${d.shipmentsOpPagina}`, 'ok');
+    log(`📅 Vroegste datum: ${d.vroegste} | Laatste: ${d.laatste}`, 'info');
+    log(`➡️ Meer paginas: ${d.heeftMeerPaginas}`, 'info');
+    if (d.orders?.length) {
+      log(`Eerste 3 orders:`, 'info');
+      d.orders.slice(0,3).forEach(o => log(`  ${o.orderId} | ship: ${o.shipDate} | order: ${o.orderDate} | items: ${o.itemCount}`, 'info'));
+    }
+  } catch(e) { log(`❌ ${e.message}`, 'err'); }
+}
+
+async function runFullSync() {
+  const h = getHeaders(); if (!h) return;
+  if (!storeId) { await checkSupabase(); }
+  if (!storeId) { log('❌ Geen storeId gevonden, voer eerst stap 3 uit', 'err'); return; }
+
+  log(`🚀 Volledige sync gestart voor store: ${storeId}`, 'info');
+
+  // STAP 1: orders mode
+  log('--- STAP 1: Open bestellingen ---', 'info');
+  let page = 1, hasMore = true, totalOrders = 0;
+  while (hasMore) {
+    try {
+      const r = await fetch(`${API}/api/sync/bol`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ storeId, mode: 'orders', page })
+      });
+      const d = await r.json();
+      if (!r.ok) { log(`❌ Orders fout: ${d.error} — ${d.detail || ''}`, 'err'); break; }
+      log(`  Orders p${page}: ${d.message} | errors: ${JSON.stringify(d.errors)}`, d.errors?.length ? 'warn' : 'ok');
+      totalOrders += d.ordersNew || 0;
+      hasMore = d.hasMore === true;
+      page = d.nextPage || page + 1;
+    } catch(e) { log(`❌ ${e.message}`, 'err'); break; }
+  }
+
+  // STAP 2: shipments mode
+  log('--- STAP 2: Historische shipments ---', 'info');
+  page = 1; hasMore = true;
+  let shipPage = 0;
+  while (hasMore && shipPage < 20) { // max 20 paginas (1000 shipments)
+    shipPage++;
+    try {
+      const r = await fetch(`${API}/api/sync/bol`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ storeId, mode: 'shipments', page })
+      });
+      const d = await r.json();
+      if (!r.ok) { log(`❌ Shipments fout: ${d.error} — ${d.detail || ''}`, 'err'); break; }
+      log(`  Shipments p${page}: ${d.message} | errors: ${JSON.stringify(d.errors)}`, d.errors?.length ? 'warn' : 'ok');
+      totalOrders += d.ordersNew || 0;
+      hasMore = d.hasMore === true;
+      page = d.nextPage || page + 1;
+      if (!hasMore) { log('  ✅ Alle shipment paginas verwerkt', 'ok'); }
+    } catch(e) { log(`❌ ${e.message}`, 'err'); break; }
+  }
+
+  // STAP 3: finalize
+  await fetch(`${API}/api/sync/bol`, {
+    method: 'POST', headers: h,
+    body: JSON.stringify({ storeId, mode: 'finalize' })
+  });
+
+  log(`✅ Sync klaar! Totaal: ${totalOrders} orders verwerkt`, 'ok');
+  log('Voer nu stap 3 (Check Supabase) uit om te zien of data er nu in staat', 'info');
+}
+</script>
+</body>
+</html>

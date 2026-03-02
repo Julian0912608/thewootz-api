@@ -1,41 +1,57 @@
+// api/debug.js — Tijdelijk diagnostisch endpoint
+// Toont exact wat er in Supabase staat zodat we het probleem kunnen vinden
+
+import { setCors, getSupabase, getUser } from './_lib/supabase.js';
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
 
-  const { clientId, clientSecret } = req.body;
-  const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const user = await getUser(req);
+  if (!user) return res.status(401).json({ error: 'Niet ingelogd' });
 
-  // Token ophalen
-  let token = null;
-  const tokenRes = await fetch('https://login.bol.com/token?grant_type=client_credentials', {
-    method: 'POST',
-    headers: { 'Authorization': `Basic ${creds}`, 'Accept': 'application/json' }
-  });
-  const tokenData = await tokenRes.json();
-  token = tokenData.access_token;
+  const supabase = getSupabase();
 
-  if (!token) return res.status(200).json({ error: 'Token mislukt', detail: tokenData });
+  // Haal stores op
+  const { data: stores } = await supabase
+    .from('stores').select('id, name, platform, last_synced_at').eq('user_id', user.id);
 
-  // Test de juiste URL met Accept header versioning
-  const tests = [
-    { url: 'https://api.bol.com/advertiser/sponsored-products/campaigns', accept: 'application/vnd.advertiser.v11+json' },
-    { url: 'https://api.bol.com/advertiser/sponsored-products/campaigns', accept: 'application/vnd.advertiser.v10+json' },
-    { url: 'https://api.bol.com/advertiser/sponsored-products/campaigns', accept: 'application/vnd.advertiser.v9+json' },
-    { url: 'https://api.bol.com/advertiser/sponsored-products/campaigns', accept: 'application/json' },
-  ];
+  if (!stores?.length) return res.status(200).json({ stores: [], orders: [], message: 'Geen winkels gevonden' });
 
-  const results = { scope: tokenData.scope, endpoints: {} };
+  const storeIds = stores.map(s => s.id);
 
-  for (const t of tests) {
-    const r = await fetch(t.url, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': t.accept }
-    });
-    const body = await r.text();
-    results.endpoints[t.accept] = { status: r.status, body: body.substring(0, 300) };
+  // Haal ALLE orders op (geen datumfilter)
+  const { data: orders, error: ordErr } = await supabase
+    .from('orders')
+    .select('id, external_id, order_date, total_amount, status, created_at')
+    .in('store_id', storeIds)
+    .order('order_date', { ascending: false })
+    .limit(200);
+
+  // Groepeer per datum
+  const perDatum = {};
+  for (const o of (orders || [])) {
+    const d = o.order_date;
+    if (!perDatum[d]) perDatum[d] = 0;
+    perDatum[d]++;
   }
 
-  return res.status(200).json(results);
+  // Vroegste en laatste order
+  const dates = Object.keys(perDatum).sort();
+
+  return res.status(200).json({
+    stores,
+    totalOrders: (orders || []).length,
+    vroegste: dates[0] || null,
+    laatste: dates[dates.length - 1] || null,
+    perDatum: Object.fromEntries(Object.entries(perDatum).slice(-30)), // laatste 30 datums
+    eersteOrders: (orders || []).slice(0, 5).map(o => ({
+      external_id: o.external_id,
+      order_date: o.order_date,
+      total_amount: o.total_amount,
+      status: o.status,
+      created_at: o.created_at
+    })),
+    supabaseError: ordErr?.message || null
+  });
 }

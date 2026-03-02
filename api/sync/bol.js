@@ -1,6 +1,7 @@
-// api/sync/bol.js — Timeout-proof versie
-// Open orders: via /orders + detail calls (klein aantal)
-// Historische orders: via /shipments ZONDER extra detail calls (direct opslaan)
+// api/sync/bol.js — Bol.com sync
+// Mode 'orders': open bestellingen via /orders endpoint (laatste 48u van bol API)
+// Mode 'shipments': historische bestellingen via /shipments endpoint (geen tijdslimiet)
+// Mode 'finalize': update last_synced_at in stores tabel
 
 import { setCors, getSupabase, getUser } from '../_lib/supabase.js';
 
@@ -18,6 +19,7 @@ export default async function handler(req, res) {
   if (!storeId) return res.status(400).json({ error: 'storeId verplicht' });
 
   const supabase = getSupabase();
+
   const { data: store } = await supabase
     .from('stores').select('*').eq('id', storeId).eq('user_id', user.id).single();
 
@@ -35,7 +37,9 @@ export default async function handler(req, res) {
 
   const currentPage = parseInt(page) || 1;
 
-  // ── MODE: orders — open bestellingen met detail calls ─────
+  // ── MODE: orders ───────────────────────────────────────────
+  // Haalt open/recente bestellingen op (max ~48u terug door bol API limiet)
+  // Gebruikt detail calls om orderPlacedDateTime te krijgen (echte besteldatum)
   if (mode === 'orders') {
     const r = await fetch(`${BASE}/orders?fulfilment-method=ALL&status=ALL&page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -62,9 +66,9 @@ export default async function handler(req, res) {
     });
   }
 
-  // ── MODE: shipments — historische orders via shipments endpoint ──
-  // Bol.com /orders geeft alleen laatste 48u. Shipments gaan jaren terug.
-  // We gebruiken hier orderPlacedDateTime (zit in shipment object) voor de juiste order_date.
+  // ── MODE: shipments ────────────────────────────────────────
+  // Haalt verzonden bestellingen op — gaat jaren terug, geen tijdslimiet
+  // Dit is de manier om historische data te importeren
   if (mode === 'shipments') {
     const r = await fetch(`${BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) {
@@ -75,15 +79,15 @@ export default async function handler(req, res) {
     const shipments = data.shipments || [];
     let ordersNew   = 0;
 
-    // Groepeer shipment items per orderId
-    // Bol.com shipment structuur: { shipmentId, orderId, shipmentDate, order: { orderPlacedDateTime }, shipmentItems: [...] }
+    // Groepeer items per orderId
     const orderMap = {};
     for (const s of shipments) {
       const orderId = s.orderId;
       if (!orderId) continue;
 
       if (!orderMap[orderId]) {
-        // Prioriteit voor orderPlacedDateTime (echte besteldatum), anders shipmentDate
+        // Gebruik orderPlacedDateTime als die beschikbaar is (echte besteldatum!)
+        // Anders shipmentDate als fallback
         const orderDate =
           s.order?.orderPlacedDateTime?.substring(0, 10) ||
           s.orderPlacedDateTime?.substring(0, 10) ||
@@ -93,8 +97,7 @@ export default async function handler(req, res) {
         orderMap[orderId] = { orderId, orderDate, items: [] };
       }
 
-      const items = s.shipmentItems || [];
-      for (const item of items) {
+      for (const item of (s.shipmentItems || [])) {
         orderMap[orderId].items.push({
           product_title: item.product?.title || item.title || 'Onbekend product',
           product_ean:   item.product?.ean   || item.ean  || null,
@@ -105,74 +108,50 @@ export default async function handler(req, res) {
       }
     }
 
-    // Sla op in Supabase
-    // BELANGRIJK: ignoreDuplicates: false + alleen order_date updaten als die nog 'vandaag' is
-    // (betekent dat de orders-mode hem net heeft opgeslagen zonder echte datum)
     for (const [orderId, order] of Object.entries(orderMap)) {
       const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
-      const today = new Date().toISOString().split('T')[0];
 
-      // Kijk of order al bestaat
-      const { data: existing } = await supabase
-        .from('orders')
-        .select('id, order_date')
-        .eq('store_id', storeId)
-        .eq('external_id', orderId)
-        .single();
+      // upsert: als order al bestaat (vanuit orders-mode) → update de order_date
+      // met de echte historische datum (orders-mode heeft soms vandaag als placeholder)
+      const { data: upserted } = await supabase.from('orders').upsert({
+        store_id:     storeId,
+        user_id:      user.id,
+        platform:     'bol',
+        external_id:  orderId,
+        order_date:   order.orderDate,
+        status:       'shipped',
+        total_amount: totalAmount,
+        raw_data:     { orderId, orderDate: order.orderDate }
+      }, {
+        onConflict: 'store_id,external_id',
+        ignoreDuplicates: false   // ALTIJD updaten zodat order_date gecorrigeerd wordt
+      }).select('id').single();
 
-      let dbOrderId;
+      if (!upserted) continue;
 
-      if (existing) {
-        // Order bestaat al — update order_date als die vandaag is (= placeholder uit orders-mode)
-        // of als we een betere datum hebben
-        const shouldUpdateDate = existing.order_date >= today || existing.order_date === today;
-        if (shouldUpdateDate && order.orderDate < today) {
-          await supabase.from('orders')
-            .update({ order_date: order.orderDate, status: 'shipped', total_amount: totalAmount })
-            .eq('id', existing.id);
-        }
-        dbOrderId = existing.id;
-      } else {
-        // Nieuwe order aanmaken
-        const { data: inserted } = await supabase.from('orders').insert({
-          store_id:     storeId,
-          user_id:      user.id,
-          platform:     'bol',
-          external_id:  orderId,
-          order_date:   order.orderDate,
-          status:       'shipped',
-          total_amount: totalAmount,
-          raw_data:     { orderId, orderDate: order.orderDate }
-        }).select('id').single();
-
-        if (!inserted) continue;
-        dbOrderId = inserted.id;
-        ordersNew++;
-      }
-
-      // Order items opslaan/verversen
       if (order.items.length > 0) {
         const dbItems = order.items.map(item => ({
           ...item,
-          order_id:  dbOrderId,
+          order_id:  upserted.id,
           store_id:  storeId,
           user_id:   user.id,
           platform:  'bol'
         }));
-        await supabase.from('order_items').delete().eq('order_id', dbOrderId);
+        await supabase.from('order_items').delete().eq('order_id', upserted.id);
         await supabase.from('order_items').insert(dbItems);
       }
+      ordersNew++;
     }
 
     const hasMore = shipments.length >= 50;
     return res.status(200).json({
       ordersNew, hasMore, nextPage: hasMore ? currentPage + 1 : null,
-      message: `Shipments p${currentPage}: ${ordersNew} nieuwe + bestaande bijgewerkt uit ${shipments.length} shipments.`,
+      message: `Shipments p${currentPage}: ${ordersNew} orders verwerkt uit ${shipments.length} shipments.`,
       mode: 'shipments'
     });
   }
 
-  // ── MODE: finalize ────────────────────────────────────────
+  // ── MODE: finalize ─────────────────────────────────────────
   if (mode === 'finalize') {
     await supabase.from('stores').update({ last_synced_at: new Date().toISOString() }).eq('id', storeId);
     await supabase.from('sync_log').insert({ store_id: storeId, user_id: user.id, status: 'ok' });

@@ -66,7 +66,7 @@ async function ensureSession() {
   if (isSessionValid()) return true;
   if (!currentSession?.refresh_token) return false;
   try {
-    const res = await fetch(`${API}/api/auth`, {
+    const res = await fetch(`${API}/api?route=auth`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'refresh', refreshToken: currentSession.refresh_token })
     });
@@ -106,7 +106,7 @@ async function handleLogin() {
   btn.disabled = true; btn.textContent = 'Bezig...';
 
   try {
-    const res = await fetch(`${API}/api/auth`, {
+    const res = await fetch(`${API}/api?route=auth`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'login', email, password })
     });
@@ -133,7 +133,7 @@ async function handleRegister() {
   btn.disabled = true; btn.textContent = 'Account aanmaken...';
 
   try {
-    const res = await fetch(`${API}/api/auth`, {
+    const res = await fetch(`${API}/api?route=auth`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'register', email, password, fullName })
     });
@@ -185,7 +185,7 @@ window.addEventListener('load', async () => {
     if (accessToken) {
       // Haal gebruikersinfo op via de token
       try {
-        const res = await fetch(`${API}/api/auth`, {
+        const res = await fetch(`${API}/api?route=auth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-User-Token': accessToken },
           body: JSON.stringify({ action: 'me' })
@@ -290,7 +290,7 @@ function toggleSidebar(forceClose) {
 async function loadStores() {
   if (!await ensureSession()) return;
   try {
-    const res = await fetch(`${API}/api/stores`, { headers: getAuthHeaders() });
+    const res = await fetch(`${API}/api?route=stores`, { headers: getAuthHeaders() });
     if (!res.ok) return;
     const data = await res.json();
     currentStores = data.stores || [];
@@ -332,7 +332,7 @@ async function saveAdsFromPage() {
   btn.disabled = true; btn.textContent = '⏳ Verifiëren...';
 
   try {
-    const res  = await fetch(`${API}/api/sync/bol-ads`, {
+    const res  = await fetch(`${API}/api?route=sync-bol-ads`, {
       method: 'POST', headers: getAuthHeaders(),
       body: JSON.stringify({ storeId, adsClientId, adsClientSecret })
     });
@@ -487,7 +487,7 @@ async function addStore() {
   btn.disabled = true; btn.textContent = '🔍 Valideren & koppelen...';
 
   try {
-    const res = await fetch(`${API}/api/stores`, {
+    const res = await fetch(`${API}/api?route=stores`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ platform: 'bol', name: name || undefined, clientId, clientSecret })
@@ -508,7 +508,7 @@ async function addStore() {
     const adsClientId     = document.getElementById('adsClientId')?.value.trim();
     const adsClientSecret = document.getElementById('adsClientSecret')?.value.trim();
     if (adsClientId && adsClientSecret && data.store?.id) {
-      await fetch(`${API}/api/sync/bol-ads`, {
+      await fetch(`${API}/api?route=sync-bol-ads`, {
         method: 'POST', headers: getAuthHeaders(),
         body: JSON.stringify({ storeId: data.store.id, adsClientId, adsClientSecret })
       });
@@ -548,7 +548,7 @@ async function deleteStore(storeId) {
   if (!await ensureSession()) return;
 
   try {
-    const res = await fetch(`${API}/api/stores?id=${storeId}`, { method: 'DELETE', headers: getAuthHeaders() });
+    const res = await fetch(`${API}/api?route=stores?id=${storeId}`, { method: 'DELETE', headers: getAuthHeaders() });
     if (res.ok) { await loadStores(); }
   } catch (e) { alert('Verwijderen mislukt: ' + e.message); }
 }
@@ -589,7 +589,7 @@ async function triggerSyncForStore(storeId, fullSync = false) {
     let page = 1, hasMore = true;
     while (hasMore) {
       updateStatus(`Open bestellingen — pagina ${page}`);
-      const res = await fetch(`${API}/api/sync/bol`, {
+      const res = await fetch(`${API}/api?route=sync-bol`, {
         method: 'POST', headers: getAuthHeaders(),
         body: JSON.stringify({ storeId, mode: 'orders', page })
       });
@@ -605,7 +605,7 @@ async function triggerSyncForStore(storeId, fullSync = false) {
       page = 1; hasMore = true;
       while (hasMore) {
         updateStatus(`Historische verzendingen — pagina ${page}`);
-        const res = await fetch(`${API}/api/sync/bol`, {
+        const res = await fetch(`${API}/api?route=sync-bol`, {
           method: 'POST', headers: getAuthHeaders(),
           body: JSON.stringify({ storeId, mode: 'shipments', page })
         });
@@ -618,7 +618,7 @@ async function triggerSyncForStore(storeId, fullSync = false) {
     }
 
     // STAP 3: Finalize
-    await fetch(`${API}/api/sync/bol`, {
+    await fetch(`${API}/api?route=sync-bol`, {
       method: 'POST', headers: getAuthHeaders(),
       body: JSON.stringify({ storeId, mode: 'finalize' })
     });
@@ -701,7 +701,7 @@ async function loadDashboard() {
 
   if (!start) start = new Date(Date.now() - 90*86400000).toISOString().split('T')[0];
 
-  let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
+  let url = `${API}/api?route=dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
   if (selectedStoreId) url += `&storeId=${selectedStoreId}`;
 
   try {
@@ -982,7 +982,7 @@ async function checkZoekpositie() {
 
   try {
     const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
-    const url = `${API}/api/zoekpositie?term=${encodeURIComponent(term)}${storeId ? '&storeId=' + storeId : ''}`;
+    const url = `${API}/api?route=zoekpositie?term=${encodeURIComponent(term)}${storeId ? '&storeId=' + storeId : ''}`;
     const res  = await fetch(url, { headers: getAuthHeaders() });
     const data = await res.json();
 
@@ -1307,7 +1307,7 @@ async function loadAdsData() {
   const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
 
   try {
-    const res  = await fetch(`${API}/api/sync/bol-ads?storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
+    const res  = await fetch(`${API}/api?route=sync-bol-ads?storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
     const data = await res.json();
 
     if (data.error === 'no_ads_credentials') {
@@ -1602,7 +1602,7 @@ async function saveAdsCredentials() {
   errEl.style.display = 'none';
 
   try {
-    const res  = await fetch(`${API}/api/sync/bol-ads`, {
+    const res  = await fetch(`${API}/api?route=sync-bol-ads`, {
       method: 'POST', headers: getAuthHeaders(),
       body: JSON.stringify({ storeId, adsClientId, adsClientSecret })
     });

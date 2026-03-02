@@ -310,15 +310,23 @@ async function handleSyncBol(req, res) {
     for (const order of Object.values(orderMap)) {
       try {
         const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
-        const { data: upserted, error: uErr } = await supabase.from('orders').upsert({
+
+        // Stap 1: upsert zonder .single() — werkt betrouwbaarder bij conflicts
+        const { error: uErr } = await supabase.from('orders').upsert({
           store_id: storeId, user_id: user.id, platform: 'bol', external_id: order.orderId,
           order_date: order.orderDate, status: 'shipped', total_amount: totalAmount,
           raw_data: { orderId: order.orderId, orderDate: order.orderDate }
-        }, { onConflict: 'store_id,external_id', ignoreDuplicates: false }).select('id').single();
-        if (uErr || !upserted) { errors.push(`${order.orderId}: ${uErr?.message || 'geen id'}`); continue; }
+        }, { onConflict: 'store_id,external_id', ignoreDuplicates: false });
+        if (uErr) { errors.push(`${order.orderId}: ${uErr.message}`); continue; }
+
+        // Stap 2: haal het id op via aparte select
+        const { data: row } = await supabase.from('orders').select('id')
+          .eq('store_id', storeId).eq('external_id', order.orderId).single();
+        if (!row) { errors.push(`${order.orderId}: id niet gevonden na upsert`); continue; }
+
         if (order.items.length > 0) {
-          await supabase.from('order_items').delete().eq('order_id', upserted.id);
-          await supabase.from('order_items').insert(order.items.map(item => ({ ...item, order_id: upserted.id, store_id: storeId, user_id: user.id, platform: 'bol' })));
+          await supabase.from('order_items').delete().eq('order_id', row.id);
+          await supabase.from('order_items').insert(order.items.map(item => ({ ...item, order_id: row.id, store_id: storeId, user_id: user.id, platform: 'bol' })));
         }
         ordersNew++;
       } catch(e) { errors.push(`${order.orderId}: ${e.message}`); }

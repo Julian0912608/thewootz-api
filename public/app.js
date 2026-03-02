@@ -12,9 +12,55 @@ let dashboardLoading = false;
 
 // ─── DATE INIT ────────────────────────────────────────────
 const _today = new Date();
-const _30ago = new Date(_today - 30 * 86400000);
+const _90ago = new Date(_today - 90 * 86400000);
 document.getElementById('endDate').value   = _today.toISOString().split('T')[0];
-document.getElementById('startDate').value = _30ago.toISOString().split('T')[0];
+document.getElementById('startDate').value = _90ago.toISOString().split('T')[0];
+
+// Periode preset helper
+function applyPeriodPreset(val) {
+  const today = new Date();
+  const fmt = d => d.toISOString().split('T')[0];
+  const startEl = document.getElementById('startDate');
+  const endEl   = document.getElementById('endDate');
+  const sep     = document.getElementById('periodSep');
+
+  if (val === 'custom') {
+    // Toon datum inputs
+    startEl.style.display = '';
+    endEl.style.display   = '';
+    if (sep) sep.style.display = '';
+    return;
+  }
+
+  // Verberg datum inputs voor preset
+  startEl.style.display = 'none';
+  endEl.style.display   = 'none';
+  if (sep) sep.style.display = 'none';
+
+  const end = fmt(today);
+  let start;
+
+  if (val === '7')  start = fmt(new Date(today - 7  * 86400000));
+  else if (val === '30') start = fmt(new Date(today - 30 * 86400000));
+  else if (val === '90') start = fmt(new Date(today - 90 * 86400000));
+  else if (val === 'thisyear')  { start = today.getFullYear() + '-01-01'; }
+  else if (val === 'lastyear')  {
+    const y = today.getFullYear() - 1;
+    start = y + '-01-01';
+    endEl.value = y + '-12-31';
+    startEl.value = start;
+    loadDashboard();
+    return;
+  }
+  else if (val === 'all') {
+    // 2 jaar terug — genoeg voor historische data
+    start = fmt(new Date(today - 730 * 86400000));
+  }
+
+  startEl.value = start;
+  endEl.value   = end;
+  loadDashboard();
+}
 
 // ═══════════════════════════════════════════════════════════
 // AUTH — helpers

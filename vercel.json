@@ -1,21 +1,18 @@
 {
   "version": 2,
   "functions": {
-    "api/**/*.js": { "maxDuration": 30 }
+    "api/index.js": { "maxDuration": 30 },
+    "api/cron/sync-orders.js": { "maxDuration": 60 }
   },
   "routes": [
-    { "src": "^/api/(.*)", "dest": "/api/$1" },
+    { "src": "^/api(.*)", "dest": "/api/index.js" },
     { "src": "^/app/?$", "dest": "/public/index.html" },
     { "src": "^/landing/?$", "dest": "/public/landing.html" },
     { "src": "^/(.+\\.html)$", "dest": "/public/$1" },
-    { "src": "^/(.+\\.js)$", "dest": "/public/$1" },
-    { "src": "^/(.+\\.css)$", "dest": "/public/$1" },
+    { "src": "^/(.+\\.(js|css|png|ico|svg))$", "dest": "/public/$1" },
     { "src": "^/$", "dest": "/public/landing.html" }
   ],
   "crons": [
-    {
-      "path": "/api/cron/sync-orders",
-      "schedule": "0 2 * * *"
-    }
+    { "path": "/api/cron/sync-orders", "schedule": "0 2 * * *" }
   ]
 }

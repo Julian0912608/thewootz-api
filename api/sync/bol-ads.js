@@ -78,11 +78,20 @@ export default async function handler(req, res) {
     }
     const totals = await totR.json();
 
+    // Debug mode 2: toon ruwe API responses
+    if (req.query.debug === '2') {
+      return res.status(200).json({
+        searchR: { status: searchR.status, body: searchR.ok ? await searchR.json() : await searchR.text() },
+        catR:    { status: catR.status,    body: catR.ok    ? await catR.json()    : await catR.text()    },
+      });
+    }
+
     // Zoektermen (optioneel)
     let searchTerms = [];
     if (searchR.ok) {
       const sd = await searchR.json();
-      searchTerms = (sd.searchTermPerformances || sd.items || [])
+      // Probeer alle mogelijke veldnamen
+      searchTerms = (sd.searchTermPerformances || sd.performances || sd.items || sd.results || [])
         .sort((a, b) => (b.clicks || 0) - (a.clicks || 0))
         .slice(0, 20);
     }
@@ -91,34 +100,79 @@ export default async function handler(req, res) {
     let categories = [];
     if (catR.ok) {
       const cd = await catR.json();
-      categories = (cd.categoryPerformances || cd.items || [])
+      categories = (cd.categoryPerformances || cd.performances || cd.items || cd.results || [])
         .sort((a, b) => (b.impressions || 0) - (a.impressions || 0))
         .slice(0, 10);
     }
 
-    // Dag-voor-dag: splits periode in losse dagen (max 30)
+    // ── Per-dag breakdown (max 14 dagen, anders te veel API calls) ──
+    const adGroupR = await fetch(`${BASE}/advertiser/search-terms?${params}&page=1&page-size=50`, { headers });
+    let adGroupData = [];
+    if (adGroupR.ok) {
+      const agd = await adGroupR.json();
+      adGroupData = agd.searchTermPerformances || agd.performances || agd.items || agd.results || [];
+    }
+
     const dagData = [];
     const startDt = new Date(start);
     const endDt   = new Date(end);
-    const diffDays = Math.min(Math.round((endDt - startDt) / 86400000) + 1, 30);
+    const diffDays = Math.round((endDt - startDt) / 86400000) + 1;
 
-    if (diffDays <= 30) {
-      const dagCalls = [];
+    // Alleen per-dag ophalen als periode ≤ 14 dagen (anders rate limit 400)
+    if (diffDays <= 14) {
+      // Sequentieel ipv parallel — voorkomt rate limit errors
       for (let i = 0; i < diffDays; i++) {
         const d = new Date(startDt);
         d.setDate(d.getDate() + i);
         const dag = d.toISOString().split('T')[0];
-        dagCalls.push(
-          fetch(`${BASE}/advertiser?period-start-date=${dag}&period-end-date=${dag}`, { headers })
-            .then(r => r.ok ? r.json().then(j => ({ datum: dag, ...j })) : { datum: dag, cost: 0, clicks: 0, impressions: 0, conversions14d: 0, sales14d: 0 })
-            .catch(() => ({ datum: dag, cost: 0, clicks: 0, impressions: 0, conversions14d: 0, sales14d: 0 }))
-        );
+        try {
+          const r = await fetch(`${BASE}/advertiser?period-start-date=${dag}&period-end-date=${dag}`, { headers });
+          if (r.ok) {
+            const j = await r.json();
+            dagData.push({ datum: dag, ...j });
+          } else {
+            dagData.push({ datum: dag, cost: 0, clicks: 0, impressions: 0, conversions14d: 0, sales14d: 0 });
+          }
+        } catch {
+          dagData.push({ datum: dag, cost: 0, clicks: 0, impressions: 0, conversions14d: 0, sales14d: 0 });
+        }
       }
-      const results = await Promise.all(dagCalls);
-      dagData.push(...results);
+    } else {
+      // Bij langere periodes: verdeel in weken en haal per week op (7 calls max)
+      const weeks = Math.ceil(diffDays / 7);
+      for (let w = 0; w < Math.min(weeks, 8); w++) {
+        const wStart = new Date(startDt);
+        wStart.setDate(wStart.getDate() + w * 7);
+        const wEnd = new Date(wStart);
+        wEnd.setDate(wEnd.getDate() + 6);
+        if (wEnd > endDt) wEnd.setTime(endDt.getTime());
+        const ws = wStart.toISOString().split('T')[0];
+        const we = wEnd.toISOString().split('T')[0];
+        try {
+          const r = await fetch(`${BASE}/advertiser?period-start-date=${ws}&period-end-date=${we}`, { headers });
+          if (r.ok) {
+            const j = await r.json();
+            // Maak 7 dag-entries aan met gelijkmatig verdeelde waarden
+            const days = Math.round((wEnd - wStart) / 86400000) + 1;
+            for (let d = 0; d < days; d++) {
+              const dayDt = new Date(wStart);
+              dayDt.setDate(dayDt.getDate() + d);
+              dagData.push({
+                datum: dayDt.toISOString().split('T')[0],
+                cost:        (j.cost        || 0) / days,
+                clicks:      Math.round((j.clicks      || 0) / days),
+                impressions: Math.round((j.impressions  || 0) / days),
+                conversions14d: Math.round((j.conversions14d || 0) / days),
+                sales14d:    (j.sales14d    || 0) / days,
+              });
+            }
+          }
+        } catch { /* skip */ }
+      }
     }
 
     return res.status(200).json({
+      searchTermsRaw: adGroupData.slice(0, 30),
       totals: {
         impressions:       totals.impressions          || 0,
         clicks:            totals.clicks               || 0,

@@ -21,48 +21,17 @@ document.getElementById('startDate').value = _90ago.toISOString().split('T')[0];
 
 // Periode preset helper
 function applyPeriodPreset(val) {
-  const today = new Date();
-  const fmt = d => d.toISOString().split('T')[0];
+  // Toon/verberg aangepaste datum inputs
   const startEl = document.getElementById('startDate');
   const endEl   = document.getElementById('endDate');
   const sep     = document.getElementById('periodSep');
+  const isCustom = val === 'custom';
+  if (startEl) startEl.style.display = isCustom ? '' : 'none';
+  if (endEl)   endEl.style.display   = isCustom ? '' : 'none';
+  if (sep)     sep.style.display     = isCustom ? '' : 'none';
 
-  if (val === 'custom') {
-    // Toon datum inputs
-    startEl.style.display = '';
-    endEl.style.display   = '';
-    if (sep) sep.style.display = '';
-    return;
-  }
-
-  // Verberg datum inputs voor preset
-  startEl.style.display = 'none';
-  endEl.style.display   = 'none';
-  if (sep) sep.style.display = 'none';
-
-  const end = fmt(today);
-  let start;
-
-  if (val === '7')  start = fmt(new Date(today - 7  * 86400000));
-  else if (val === '30') start = fmt(new Date(today - 30 * 86400000));
-  else if (val === '90') start = fmt(new Date(today - 90 * 86400000));
-  else if (val === 'thisyear')  { start = today.getFullYear() + '-01-01'; }
-  else if (val === 'lastyear')  {
-    const y = today.getFullYear() - 1;
-    start = y + '-01-01';
-    endEl.value = y + '-12-31';
-    startEl.value = start;
-    loadDashboard();
-    return;
-  }
-  else if (val === 'all') {
-    // 2 jaar terug — genoeg voor historische data
-    start = fmt(new Date(today - 730 * 86400000));
-  }
-
-  startEl.value = start;
-  endEl.value   = end;
-  loadDashboard();
+  // loadDashboard berekent de datums zelf uit de preset-waarde
+  if (!isCustom) loadDashboard();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -710,14 +679,28 @@ async function loadDashboard() {
   refreshBtn.style.display = 'inline-flex';
   document.getElementById('livePill').style.display = 'inline-flex';
 
-  // Zorg dat datum altijd gezet is via de preset (zelfs als inputs verborgen zijn)
+  // Bereken startDate/endDate direct uit de dropdown (niet uit verborgen inputs)
+  const today = new Date().toISOString().split('T')[0];
   const presetEl = document.getElementById('periodPreset');
-  if (presetEl && (!document.getElementById('startDate').value || !document.getElementById('endDate').value)) {
-    const pv = presetEl.value || '90';
-    if (pv !== 'custom') applyPeriodPreset(pv);
+  const preset   = presetEl ? presetEl.value : '90';
+  let start, end = today;
+
+  if (preset === 'custom') {
+    start = document.getElementById('startDate').value;
+    end   = document.getElementById('endDate').value   || today;
+  } else if (preset === '7')  { start = new Date(Date.now() -   7*86400000).toISOString().split('T')[0]; }
+  else if (preset === '30')   { start = new Date(Date.now() -  30*86400000).toISOString().split('T')[0]; }
+  else if (preset === '90')   { start = new Date(Date.now() -  90*86400000).toISOString().split('T')[0]; }
+  else if (preset === 'thisyear') { start = new Date().getFullYear() + '-01-01'; }
+  else if (preset === 'lastyear') {
+    const y = new Date().getFullYear() - 1;
+    start = y + '-01-01'; end = y + '-12-31';
   }
-  const start = document.getElementById('startDate').value;
-  const end   = document.getElementById('endDate').value;
+  else if (preset === 'all')  { start = new Date(Date.now() - 730*86400000).toISOString().split('T')[0]; }
+  else { start = new Date(Date.now() - 90*86400000).toISOString().split('T')[0]; }
+
+  if (!start) start = new Date(Date.now() - 90*86400000).toISOString().split('T')[0];
+
   let url = `${API}/api/dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
   if (selectedStoreId) url += `&storeId=${selectedStoreId}`;
 

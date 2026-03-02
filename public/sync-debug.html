@@ -49,7 +49,7 @@ async function checkSupabase() {
   const h = getHeaders(); if (!h) return;
   log('Supabase check starten...', 'info');
   try {
-    const r = await fetch(`${API}/api/debug`, { headers: h });
+    const r = await fetch(`${API}/api?route=debug`, { headers: h });
     const d = await r.json();
     if (!r.ok) { log(`❌ Fout: ${d.error}`, 'err'); return; }
     log(`✅ Winkels: ${d.stores?.map(s=>s.name).join(', ')}`, 'ok');
@@ -65,7 +65,7 @@ async function runTest() {
   const h = getHeaders(); if (!h) return;
   log('Test: shipments API pagina 1...', 'info');
   try {
-    const r = await fetch(`${API}/api/test-shipments?page=1`, { headers: h });
+    const r = await fetch(`${API}/api?route=test-shipments?page=1`, { headers: h });
     if (!r.ok) {
       const t = await r.text();
       log(`❌ HTTP ${r.status}: ${t.substring(0, 200)}`, 'err');
@@ -95,7 +95,7 @@ async function runFullSync() {
   let page = 1, hasMore = true, totalOrders = 0;
   while (hasMore) {
     try {
-      const r = await fetch(`${API}/api/sync/bol`, {
+      const r = await fetch(`${API}/api?route=sync-bol`, {
         method: 'POST', headers: h,
         body: JSON.stringify({ storeId, mode: 'orders', page })
       });
@@ -115,7 +115,7 @@ async function runFullSync() {
   while (hasMore && shipPage < 20) { // max 20 paginas (1000 shipments)
     shipPage++;
     try {
-      const r = await fetch(`${API}/api/sync/bol`, {
+      const r = await fetch(`${API}/api?route=sync-bol`, {
         method: 'POST', headers: h,
         body: JSON.stringify({ storeId, mode: 'shipments', page })
       });
@@ -130,7 +130,7 @@ async function runFullSync() {
   }
 
   // STAP 3: finalize
-  await fetch(`${API}/api/sync/bol`, {
+  await fetch(`${API}/api?route=sync-bol`, {
     method: 'POST', headers: h,
     body: JSON.stringify({ storeId, mode: 'finalize' })
   });

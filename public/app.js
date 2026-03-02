@@ -238,6 +238,8 @@ function switchTab(tab) {
   const livePill    = document.getElementById('livePill');
   if (periodGroup) periodGroup.style.display = hidePeriod.includes(tab) ? 'none' : '';
   if (syncBtn)     syncBtn.style.display     = hidePeriod.includes(tab) ? 'none' : '';
+  const _fullSyncBtn = document.getElementById('fullSyncBtn');
+  if (_fullSyncBtn) _fullSyncBtn.style.display = hidePeriod.includes(tab) ? 'none' : '';
   if (refreshBtn)  refreshBtn.style.display  = hidePeriod.includes(tab) ? 'none' : '';
   if (livePill)    livePill.style.display    = hidePeriod.includes(tab) ? 'none' : '';
   document.querySelectorAll('#sideNav .nav-item').forEach(i => i.classList.remove('active'));
@@ -654,6 +656,8 @@ async function loadDashboard() {
   }
 
   syncBtn.style.display    = 'inline-flex';
+  const _fsb = document.getElementById('fullSyncBtn');
+  if (_fsb) _fsb.style.display = 'inline-flex';
   refreshBtn.style.display = 'inline-flex';
   document.getElementById('livePill').style.display = 'inline-flex';
 

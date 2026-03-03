@@ -289,51 +289,113 @@ async function handleSyncBol(req, res) {
   if (mode === 'shipments') {
     const r = await fetch(`${BOL_BASE}/shipments?page=${currentPage}`, { headers });
     if (!r.ok) { const err = await r.text(); return res.status(r.status).json({ error: `Shipments API fout (${r.status})`, detail: err.substring(0, 300) }); }
-    const { shipments = [] } = await r.json();
-    let ordersNew = 0, errors = [];
+    
+    const rawData = await r.json();
+    const shipments = rawData.shipments || [];
+    
+    // DEBUG: toon ruwe structuur van eerste shipment
+    const firstShipment = shipments[0] || null;
+    const debugInfo = firstShipment ? {
+      keys: Object.keys(firstShipment),
+      orderId: firstShipment.orderId,
+      shipmentDate: firstShipment.shipmentDate,
+      hasOrder: !!firstShipment.order,
+      orderKeys: firstShipment.order ? Object.keys(firstShipment.order) : [],
+      orderPlacedDateTime: firstShipment.order?.orderPlacedDateTime,
+      itemCount: (firstShipment.shipmentItems || []).length,
+      firstItem: firstShipment.shipmentItems?.[0] ? {
+        keys: Object.keys(firstShipment.shipmentItems[0]),
+        product: firstShipment.shipmentItems[0].product,
+        unitPrice: firstShipment.shipmentItems[0].unitPrice,
+        quantity: firstShipment.shipmentItems[0].quantity,
+      } : null
+    } : null;
 
+    let ordersNew = 0, errors = [];
     const orderMap = {};
+
     for (const s of shipments) {
       if (!s.orderId) continue;
       if (!orderMap[s.orderId]) {
-        orderMap[s.orderId] = {
-          orderId: s.orderId,
-          orderDate: s.order?.orderPlacedDateTime?.substring(0,10) || s.orderPlacedDateTime?.substring(0,10) || s.shipmentDate?.substring(0,10) || new Date().toISOString().split('T')[0],
-          items: []
-        };
+        const orderDate = 
+          s.order?.orderPlacedDateTime?.substring(0,10) ||
+          s.orderPlacedDateTime?.substring(0,10) ||
+          s.shipmentDate?.substring(0,10) ||
+          new Date().toISOString().split('T')[0];
+        orderMap[s.orderId] = { orderId: s.orderId, orderDate, items: [] };
       }
       for (const item of (s.shipmentItems || [])) {
-        orderMap[s.orderId].items.push({ product_title: item.product?.title || item.title || 'Onbekend', product_ean: item.product?.ean || item.ean || null, quantity: item.quantity || 1, unit_price: item.unitPrice || 0, total_price: (item.unitPrice || 0) * (item.quantity || 1) });
+        orderMap[s.orderId].items.push({
+          product_title: item.product?.title || item.title || 'Onbekend',
+          product_ean:   item.product?.ean   || item.ean  || null,
+          quantity:      item.quantity  || 1,
+          unit_price:    item.unitPrice || 0,
+          total_price:   (item.unitPrice || 0) * (item.quantity || 1)
+        });
       }
     }
 
-    for (const order of Object.values(orderMap)) {
+    const orderList = Object.values(orderMap);
+
+    for (const order of orderList) {
       try {
         const totalAmount = order.items.reduce((sum, i) => sum + i.total_price, 0);
 
-        // Stap 1: upsert zonder .single() — werkt betrouwbaarder bij conflicts
-        const { error: uErr } = await supabase.from('orders').upsert({
-          store_id: storeId, user_id: user.id, platform: 'bol', external_id: order.orderId,
-          order_date: order.orderDate, status: 'shipped', total_amount: totalAmount,
-          raw_data: { orderId: order.orderId, orderDate: order.orderDate }
-        }, { onConflict: 'store_id,external_id', ignoreDuplicates: false });
-        if (uErr) { errors.push(`${order.orderId}: ${uErr.message}`); continue; }
+        // INSERT OR UPDATE — gebruik insert met onConflict do update
+        const { data: inserted, error: insErr } = await supabase
+          .from('orders')
+          .insert({
+            store_id:     storeId,
+            user_id:      user.id,
+            platform:     'bol',
+            external_id:  order.orderId,
+            order_date:   order.orderDate,
+            status:       'shipped',
+            total_amount: totalAmount,
+            raw_data:     { orderId: order.orderId, orderDate: order.orderDate }
+          })
+          .select('id')
+          .single();
 
-        // Stap 2: haal het id op via aparte select
-        const { data: row } = await supabase.from('orders').select('id')
-          .eq('store_id', storeId).eq('external_id', order.orderId).single();
-        if (!row) { errors.push(`${order.orderId}: id niet gevonden na upsert`); continue; }
+        let rowId = inserted?.id;
+
+        // Als insert faalt door duplicate, doe een update + select
+        if (insErr) {
+          const { data: updated, error: updErr } = await supabase
+            .from('orders')
+            .update({ order_date: order.orderDate, status: 'shipped', total_amount: totalAmount })
+            .eq('store_id', storeId)
+            .eq('external_id', order.orderId)
+            .select('id')
+            .single();
+          if (updErr) { errors.push(`${order.orderId} update: ${updErr.message}`); continue; }
+          rowId = updated?.id;
+        }
+
+        if (!rowId) { errors.push(`${order.orderId}: geen rowId na insert/update`); continue; }
 
         if (order.items.length > 0) {
-          await supabase.from('order_items').delete().eq('order_id', row.id);
-          await supabase.from('order_items').insert(order.items.map(item => ({ ...item, order_id: row.id, store_id: storeId, user_id: user.id, platform: 'bol' })));
+          await supabase.from('order_items').delete().eq('order_id', rowId);
+          const { error: itemErr } = await supabase.from('order_items').insert(
+            order.items.map(item => ({ ...item, order_id: rowId, store_id: storeId, user_id: user.id, platform: 'bol' }))
+          );
+          if (itemErr) errors.push(`${order.orderId} items: ${itemErr.message}`);
         }
         ordersNew++;
       } catch(e) { errors.push(`${order.orderId}: ${e.message}`); }
     }
 
     const hasMore = shipments.length >= 50;
-    return res.status(200).json({ ordersNew, hasMore, nextPage: hasMore ? currentPage+1 : null, shipmentsOnPage: shipments.length, message: `Shipments p${currentPage}: ${shipments.length} shipments, ${ordersNew} orders opgeslagen`, mode: 'shipments', errors: errors.slice(0,5) });
+    return res.status(200).json({
+      ordersNew, hasMore,
+      nextPage: hasMore ? currentPage+1 : null,
+      shipmentsOnPage: shipments.length,
+      uniqueOrders: orderList.length,
+      message: `Shipments p${currentPage}: ${shipments.length} shipments → ${orderList.length} orders → ${ordersNew} opgeslagen`,
+      mode: 'shipments',
+      errors,           // Alle errors, niet gesliced
+      debugFirstShipment: currentPage === 1 ? debugInfo : undefined
+    });
   }
 
   if (mode === 'finalize') {

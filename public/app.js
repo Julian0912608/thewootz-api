@@ -548,7 +548,7 @@ async function deleteStore(storeId) {
   if (!await ensureSession()) return;
 
   try {
-    const res = await fetch(`${API}/api?route=stores?id=${storeId}`, { method: 'DELETE', headers: getAuthHeaders() });
+    const res = await fetch(`${API}/api?route=stores&id=${storeId}`, { method: 'DELETE', headers: getAuthHeaders() });
     if (res.ok) { await loadStores(); }
   } catch (e) { alert('Verwijderen mislukt: ' + e.message); }
 }
@@ -701,7 +701,7 @@ async function loadDashboard() {
 
   if (!start) start = new Date(Date.now() - 90*86400000).toISOString().split('T')[0];
 
-  let url = `${API}/api?route=dashboard?startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
+  let url = `${API}/api?route=dashboard&startDate=${start}&endDate=${end}&compareMode=${compareMode}`;
   if (selectedStoreId) url += `&storeId=${selectedStoreId}`;
 
   try {
@@ -982,7 +982,7 @@ async function checkZoekpositie() {
 
   try {
     const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
-    const url = `${API}/api?route=zoekpositie?term=${encodeURIComponent(term)}${storeId ? '&storeId=' + storeId : ''}`;
+    const url = `${API}/api?route=zoekpositie&term=${encodeURIComponent(term)}${storeId ? '&storeId=' + storeId : ''}`;
     const res  = await fetch(url, { headers: getAuthHeaders() });
     const data = await res.json();
 
@@ -1307,7 +1307,7 @@ async function loadAdsData() {
   const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
 
   try {
-    const res  = await fetch(`${API}/api?route=sync-bol-ads?storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
+    const res  = await fetch(`${API}/api?route=sync-bol-ads&storeId=${storeId}&startDate=${start}&endDate=${end}`, { headers: getAuthHeaders() });
     const data = await res.json();
 
     if (data.error === 'no_ads_credentials') {

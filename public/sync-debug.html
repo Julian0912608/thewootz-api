@@ -121,7 +121,9 @@ async function runFullSync() {
       });
       const d = await r.json();
       if (!r.ok) { log(`❌ Shipments fout: ${d.error} — ${d.detail || ''}`, 'err'); break; }
-      log(`  Shipments p${page}: ${d.message} | errors: ${JSON.stringify(d.errors)}`, d.errors?.length ? 'warn' : 'ok');
+      log(`  Shipments p${page}: ${d.message}`, d.ordersNew > 0 ? 'ok' : 'warn');
+      if (d.errors?.length) log(`  ⚠️ Errors: ${JSON.stringify(d.errors)}`, 'err');
+      if (d.debugFirstShipment) log(`  🔍 Shipment structuur: ${JSON.stringify(d.debugFirstShipment)}`, 'info');
       totalOrders += d.ordersNew || 0;
       hasMore = d.hasMore === true;
       page = d.nextPage || page + 1;

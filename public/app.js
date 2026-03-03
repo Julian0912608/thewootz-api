@@ -1310,7 +1310,7 @@ async function loadAdsData() {
   else if (_adsPreset === '30')  start = new Date(Date.now() -  30*86400000).toISOString().split('T')[0];
   else if (_adsPreset === '90')  start = new Date(Date.now() -  90*86400000).toISOString().split('T')[0];
   else if (_adsPreset === 'thisyear') start = new Date().getFullYear() + '-01-01';
-  else if (_adsPreset === 'all') start = new Date(Date.now() - 365*86400000).toISOString().split('T')[0];
+  else if (_adsPreset === 'all') start = new Date(Date.now() - 90*86400000).toISOString().split('T')[0]; // Ads API max ~92 dagen
   else if (_adsPreset === 'custom') {
     start = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
     end   = document.getElementById('endDate')?.value   || _adsToday;

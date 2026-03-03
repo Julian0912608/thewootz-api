@@ -537,7 +537,12 @@ async function handleSyncBolAds(req, res) {
 
     if (!totR.ok) {
       let errBody = ''; try { errBody = await totR.text(); } catch {}
-      return res.status(totR.status).json({ error: `Reporting API fout (${totR.status})`, detail: errBody.substring(0, 500), tip: totR.status === 400 ? 'Controleer datumformaat of verklein de periode' : totR.status === 403 ? 'Controleer advertising scope' : undefined });
+      return res.status(totR.status).json({
+        error: `Reporting API fout (${totR.status})`,
+        detail: errBody.substring(0, 1000),
+        requestedParams: { start, end, days: Math.round((new Date(end)-new Date(start))/86400000) },
+        bolUrl: `${ADS_BASE}/advertiser?${params}`
+      });
     }
     const totals = await totR.json();
 

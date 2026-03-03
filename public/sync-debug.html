@@ -24,6 +24,7 @@
 <button onclick="runTest()">1. Test shipments API</button>
 <button onclick="runFullSync()">2. Volledige sync draaien</button>
 <button onclick="checkSupabase()">3. Check Supabase inhoud</button>
+<button onclick="runEnrich()">4. Prijzen aanvullen (enrich)</button>
 <button onclick="clearLog()">Clear</button>
 <div id="log"></div>
 
@@ -139,6 +140,33 @@ async function runFullSync() {
 
   log(`✅ Sync klaar! Totaal: ${totalOrders} orders verwerkt`, 'ok');
   log('Voer nu stap 3 (Check Supabase) uit om te zien of data er nu in staat', 'info');
+}
+
+async function runEnrich() {
+  const h = getHeaders(); if (!h) return;
+  if (!storeId) { await checkSupabase(); }
+  if (!storeId) { log('❌ Geen storeId, voer eerst stap 3 uit', 'err'); return; }
+
+  log('💰 Prijzen aanvullen voor orders met bedrag=0...', 'info');
+  let offset = 0, totalEnriched = 0, hasMore = true, round = 0;
+
+  while (hasMore && round < 20) {
+    round++;
+    try {
+      const r = await fetch(`${API}/api?route=sync-bol`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ storeId, mode: 'enrich', batchSize: 25, offset })
+      });
+      const d = await r.json();
+      if (!r.ok) { log(`❌ Enrich fout: ${d.error}`, 'err'); break; }
+      log(`  Ronde ${round}: ${d.message}`, d.enriched > 0 ? 'ok' : 'info');
+      if (d.errors?.length) log(`  ⚠️ ${JSON.stringify(d.errors)}`, 'warn');
+      totalEnriched += d.enriched || 0;
+      hasMore = d.hasMore === true;
+      offset += 25;
+      if (!hasMore) log(`✅ Klaar! Totaal ${totalEnriched} orders aangevuld met echte prijzen.`, 'ok');
+    } catch(e) { log(`❌ ${e.message}`, 'err'); break; }
+  }
 }
 </script>
 </body>

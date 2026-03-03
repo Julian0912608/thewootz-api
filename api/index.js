@@ -522,7 +522,10 @@ async function handleSyncBolAds(req, res) {
 
     // Gebruik fallback als lege string wordt meegegeven
     const end   = (endDate   && endDate.length   === 10) ? endDate   : new Date().toISOString().split('T')[0];
-    const start = (startDate && startDate.length === 10) ? startDate : new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+    let   start = (startDate && startDate.length === 10) ? startDate : new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+    // Bol.com Advertising API max 92 dagen — klamp periode in
+    const _maxStart = new Date(new Date(end) - 90*86400000).toISOString().split('T')[0];
+    if (start < _maxStart) { start = _maxStart; }
     const params = `period-start-date=${start}&period-end-date=${end}`;
     const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.advertiser.v11+json', 'Content-Type': 'application/vnd.advertiser.v11+json' };
 

@@ -1302,8 +1302,20 @@ async function loadAdsData() {
   const btn = document.getElementById('loadAdsBtn');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Laden...'; }
 
-  const start   = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
-  const end     = document.getElementById('endDate')?.value   || new Date().toISOString().split('T')[0];
+  // Bereken datums direct uit preset (zelfde logica als dashboard)
+  const _adsToday = new Date().toISOString().split('T')[0];
+  const _adsPreset = document.getElementById('periodPreset')?.value || '30';
+  let start, end = _adsToday;
+  if (_adsPreset === '7')        start = new Date(Date.now() -   7*86400000).toISOString().split('T')[0];
+  else if (_adsPreset === '30')  start = new Date(Date.now() -  30*86400000).toISOString().split('T')[0];
+  else if (_adsPreset === '90')  start = new Date(Date.now() -  90*86400000).toISOString().split('T')[0];
+  else if (_adsPreset === 'thisyear') start = new Date().getFullYear() + '-01-01';
+  else if (_adsPreset === 'all') start = new Date(Date.now() - 365*86400000).toISOString().split('T')[0];
+  else if (_adsPreset === 'custom') {
+    start = document.getElementById('startDate')?.value || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+    end   = document.getElementById('endDate')?.value   || _adsToday;
+  }
+  else start = new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
   const storeId = selectedStoreId || (currentStores.find(s => s.platform === 'bol')?.id || '');
 
   try {

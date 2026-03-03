@@ -520,8 +520,9 @@ async function handleSyncBolAds(req, res) {
     const token           = await getAdsToken(adsClientId, adsClientSecret);
     if (!token) return res.status(401).json({ error: 'Advertising API authenticatie mislukt.' });
 
-    const end   = endDate   || new Date().toISOString().split('T')[0];
-    const start = startDate || new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+    // Gebruik fallback als lege string wordt meegegeven
+    const end   = (endDate   && endDate.length   === 10) ? endDate   : new Date().toISOString().split('T')[0];
+    const start = (startDate && startDate.length === 10) ? startDate : new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
     const params = `period-start-date=${start}&period-end-date=${end}`;
     const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.advertiser.v11+json', 'Content-Type': 'application/vnd.advertiser.v11+json' };
 

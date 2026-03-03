@@ -410,6 +410,80 @@ async function handleSyncBol(req, res) {
     return res.status(200).json({ message: 'Sync afgerond.' });
   }
 
+  // ── MODE: enrich ──────────────────────────────────────────────
+  // Haalt orderdetails op voor orders die total_amount=0 hebben (van shipments sync)
+  // Vercel timeout: max 25 orders per aanroep
+  if (mode === 'enrich') {
+    const batchSize = parseInt(req.body.batchSize || 25);
+    const offset    = parseInt(req.body.offset    || 0);
+
+    // Haal orders op met total_amount = 0
+    const { data: emptyOrders } = await supabase
+      .from('orders')
+      .select('id, external_id')
+      .eq('store_id', storeId)
+      .eq('user_id', user.id)
+      .eq('total_amount', 0)
+      .order('id')
+      .range(offset, offset + batchSize - 1);
+
+    if (!emptyOrders?.length) {
+      return res.status(200).json({ enriched: 0, hasMore: false, message: 'Alle orders hebben al een bedrag.' });
+    }
+
+    let enriched = 0, errors = [];
+    for (const order of emptyOrders) {
+      try {
+        const detail = await fetchOrderDetail(order.external_id, headers);
+        if (!detail) { errors.push(`${order.external_id}: detail niet gevonden`); continue; }
+
+        const totalAmount = (detail.orderItems || []).reduce(
+          (sum, i) => sum + (i.totalPrice || (i.unitPrice * (i.quantity || 1)) || 0), 0
+        );
+        const orderDate = (detail.orderPlacedDateTime || '').substring(0, 10)
+          || new Date().toISOString().split('T')[0];
+
+        await supabase.from('orders').update({
+          total_amount: totalAmount,
+          order_date:   orderDate,
+          status:       getOrderStatus(detail.orderItems || []),
+          raw_data:     detail
+        }).eq('id', order.id);
+
+        // Update order items met echte prijzen
+        const items = (detail.orderItems || []).map(item => ({
+          order_id:      order.id,
+          store_id:      storeId,
+          user_id:       user.id,
+          platform:      'bol',
+          product_title: item.product?.title || item.offer?.reference || 'Onbekend',
+          product_ean:   item.product?.ean   || null,
+          quantity:      item.quantity       || 1,
+          unit_price:    item.unitPrice      || 0,
+          total_price:   item.totalPrice     || (item.unitPrice * (item.quantity || 1)) || 0
+        }));
+
+        if (items.length > 0) {
+          await supabase.from('order_items').delete().eq('order_id', order.id);
+          await supabase.from('order_items').insert(items);
+        }
+        enriched++;
+      } catch(e) { errors.push(`${order.external_id}: ${e.message}`); }
+    }
+
+    // Check hoeveel er nog over zijn
+    const { count } = await supabase.from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId).eq('user_id', user.id).eq('total_amount', 0);
+
+    return res.status(200).json({
+      enriched, errors,
+      hasMore: (count || 0) > 0,
+      remaining: count || 0,
+      message: `${enriched} orders aangevuld met prijzen. Nog ${count || 0} te gaan.`
+    });
+  }
+
   return res.status(400).json({ error: `Onbekende mode: ${mode}` });
 }
 

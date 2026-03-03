@@ -315,19 +315,25 @@ async function handleSyncBol(req, res) {
     const orderMap = {};
 
     for (const s of shipments) {
-      if (!s.orderId) continue;
-      if (!orderMap[s.orderId]) {
-        const orderDate = 
+      // orderId zit in s.order.orderId, NIET in s.orderId
+      const orderId = s.order?.orderId || s.orderId;
+      if (!orderId) continue;
+
+      if (!orderMap[orderId]) {
+        const orderDate =
           s.order?.orderPlacedDateTime?.substring(0,10) ||
           s.orderPlacedDateTime?.substring(0,10) ||
-          s.shipmentDate?.substring(0,10) ||
+          s.shipmentDateTime?.substring(0,10) ||
           new Date().toISOString().split('T')[0];
-        orderMap[s.orderId] = { orderId: s.orderId, orderDate, items: [] };
+        orderMap[orderId] = { orderId, orderDate, items: [] };
       }
+
       for (const item of (s.shipmentItems || [])) {
-        orderMap[s.orderId].items.push({
-          product_title: item.product?.title || item.title || 'Onbekend',
-          product_ean:   item.product?.ean   || item.ean  || null,
+        // Items hebben alleen orderItemId + ean — rest ophalen we niet (geen prijs beschikbaar)
+        // We slaan toch op met ean als identifier, prijs=0 (wordt later via orders-mode bijgewerkt)
+        orderMap[orderId].items.push({
+          product_title: item.product?.title || item.title || `EAN: ${item.ean || 'Onbekend'}`,
+          product_ean:   item.ean || item.product?.ean || null,
           quantity:      item.quantity  || 1,
           unit_price:    item.unitPrice || 0,
           total_price:   (item.unitPrice || 0) * (item.quantity || 1)
@@ -536,7 +542,13 @@ async function handleTestShipments(req, res) {
   if (!shipR.ok) { const err = await shipR.text(); return res.status(shipR.status).json({ error: `Shipments API fout (${shipR.status})`, detail: err.substring(0, 500) }); }
 
   const { shipments = [] } = await shipR.json();
-  const orderDates = shipments.map(s => ({ orderId: s.orderId, shipDate: s.shipmentDate?.substring(0,10), orderDate: s.order?.orderPlacedDateTime?.substring(0,10) || s.orderPlacedDateTime?.substring(0,10) || '(niet beschikbaar)', itemCount: (s.shipmentItems||[]).length }));
+  const orderDates = shipments.map(s => ({
+    orderId:   s.order?.orderId || s.orderId || '(geen orderId)',
+    shipDate:  s.shipmentDateTime?.substring(0,10) || s.shipmentDate?.substring(0,10),
+    orderDate: s.order?.orderPlacedDateTime?.substring(0,10) || '(niet beschikbaar)',
+    itemCount: (s.shipmentItems||[]).length,
+    itemKeys:  s.shipmentItems?.[0] ? Object.keys(s.shipmentItems[0]) : []
+  }));
   const validDates = orderDates.map(o => o.orderDate).filter(d => d !== '(niet beschikbaar)').sort();
 
   return res.status(200).json({ page, shipmentsOpPagina: shipments.length, heeftMeerPaginas: shipments.length >= 50, vroegste: validDates[0]||'?', laatste: validDates[validDates.length-1]||'?', orders: orderDates });

@@ -1335,6 +1335,12 @@ async function loadAdsData() {
 
     // De API geeft totalen terug — zet om naar 1 rij voor analyzeData
     // Maar toon ook de rijke advertentie-KPIs direct
+    // Toon content, verberg leeg scherm
+    const emptyEl   = document.getElementById('analyseEmpty');
+    const contentEl = document.getElementById('analyseContent');
+    if (emptyEl)   emptyEl.style.display   = 'none';
+    if (contentEl) contentEl.style.display = 'block';
+
     renderAdsKpis(t, data.periode);
 
     // Maak 1 samenvatting-rij voor de analyzeData functie (tabel + tips)
